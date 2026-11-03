@@ -64,6 +64,11 @@ def main():
                          "offsets, fading mismatch, no adaptation")
     ap.add_argument("--latency", action="store_true")
     ap.add_argument("--out-dir", default=DATA)
+    ap.add_argument("--init", choices=["none", "pca"], default="none",
+                    help="pca (shared_dyn*, 2026-11-03): transmit rows = principal directions of the "
+                         "training embeddings in variance order, cyclically repeated over the d_s "
+                         "entries, decoder = the matching inverse, so training starts from a "
+                         "closed-form nested code")
     args = ap.parse_args()
 
     device = get_device()
@@ -90,6 +95,16 @@ def main():
             model.mask.zero_()
             for k in range(U_max):
                 model.mask[k, k * w:(k + 1) * w] = 1.0
+    if args.init == "pca":
+        with torch.no_grad():
+            Etr = cache["train"].double()
+            lam, V = torch.linalg.eigh(Etr.T @ Etr / Etr.shape[0])
+            V = V[:, torch.argsort(lam, descending=True)].float()
+            rep = torch.arange(model.d_s) % d_b                  # entry i carries direction i mod d_b
+            model.tx_w.copy_(V[:, rep].T.to(model.tx_w.device))
+            model.tx_b.zero_()
+            model.rx_w[0].copy_((V[:, rep] / (model.d_s // d_b)).to(model.rx_w.device))
+            model.rx_b.zero_()
     frozen = set()
     if "mask" in args.freeze:
         frozen.add("mask")
@@ -108,7 +123,7 @@ def main():
                train_snrs=list(args.train_snrs), lam=args.lam,
                fading=args.fading, freeze=sorted(frozen),
                attention=not args.no_attention, per_user_rx=args.per_user_rx,
-               mask_init=args.mask_init, n_slots=args.n_slots, dataset=args.dataset,
+               mask_init=args.mask_init, init=args.init, n_slots=args.n_slots, dataset=args.dataset,
                model=args.model, trials=args.trials, train_keys=train_keys,
                device=str(device), torch=torch.__version__)
     log(f"  cfg: {json.dumps({k: v for k, v in cfg.items() if k != 'train_keys'})}")

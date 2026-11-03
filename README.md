@@ -1,150 +1,186 @@
-# Load-Adaptive Semantic Multiplexing via Nested Expanded BERT Embeddings and Dynamic Masks
+# Load-Adaptive Semantic Multiplexing via Nested Principal-Component Codes and Dynamic Masks
 
-Code, stored results, and trained models for the IEEE Communications Letters
-paper by Ki-Ho Lee, Hyun-Ho Choi, and Jung-Ryun Lee (under review). Every
-figure and every number of the paper and of its supplementary results can be
-regenerated from this repository.
+Code, stored results, and trained reference models for the IEEE Communications
+Letters paper by Ki-Ho Lee, Hyun-Ho Choi, and Jung-Ryun Lee (under review).
+Every figure and every number of the paper and of its supplementary results can
+be regenerated from this repository.
 
 ## What the letter studies
 
 `U` distributed users send sentences over one block of `d_s = K * d_b` real
-channel uses (`d_b = 768`, `K = 4`, `d_s = 3072`), and the load `U` changes from
-frame to frame between 1 and `U_max = 6`. The receiver announces the load and a
-rank for each active user before a frame.
+channel uses (`d_b = 768`, `K = 4`, `d_s = 3072`, 24 slots of 128 uses), and the
+load `U` changes from frame to frame between 1 and 6 (8 in a generality check).
+The receiver announces the SNR, the load, and a rank for each active user.
 
-* Every user applies one common transmitter, which expands its frozen BERT
-  sentence embedding into a nested code read as `N = 24` ordered segments of
-  128 uses. The leading segments stand alone, and later segments refine them.
-* Dynamic masks set by the announced load give the user of rank `j` the slots
-  `s` with `s mod U = j`, so the masks are disjoint and cover the block. A user
-  sends all 24 segments when it is alone and 4 segments at `U = 6`.
-* A learned per-load profile, log-linear in the SNR and held at its 25 dB value
-  above the training range, weights the entries. The receiver gathers the slots
-  of a user, normalizes them blindly, and applies one linear decoder shared by
-  all users and loads.
-* One transceiver is trained once for all loads by first-order SNR-aware MAML,
-  with the load drawn at random at every step. No mask is learned.
+* **Nested code.** Each user projects its centered BERT sentence embedding on
+  the principal components of the training embeddings (PCA, eigenvalues in
+  decreasing order) and repeats the 768 coefficients cyclically over the block.
+  Leading coefficients carry the largest variance, so the code can be cut at
+  any length.
+* **Dynamic masks.** At load `U` the user of rank `j` owns the slots `s` with
+  `s mod U = j` and sends its leading segments there. A user sends all
+  coefficients, with repetitions, at light load and fewer coefficients under
+  overload.
+* **Closed-form power and receiver.** Coefficient `i` receives the power
+  `P_i = max(0, sqrt(lambda_i s2 / nu) - s2)` with `sum P_i = d_s/U` at the
+  announced noise variance `s2` (classical optimal linear coding,
+  K.-H. Lee and D. P. Petersen, IEEE Trans. Commun., 1976). The receiver
+  estimates the gain blindly from the received energy and applies the Wiener
+  factor per coefficient. Nothing is trained.
+* **Channel-aware masks (Section IV-E).** When the gain varies over the slots,
+  as over subbands, and the receiver knows it, every used slot carries one group
+  of 128 coefficients. The groups of a user occupy its slots in decreasing order
+  of gain, and coefficient `i` on a slot of gain `g_i` receives
+  `P_i = max(0, sqrt(lambda_i s2 / nu) / g_i - s2 / g_i^2)` (the same classical
+  result). After a first slot for every user, the receiver grants each further
+  slot greedily to the user whose MSE decreases most, at the energy `d_s/N` per
+  slot, so the slot count and the energy of a user follow its channel. The
+  greedy grant is a heuristic and is not shown to be optimal.
 
-Main results (three-seed means):
+Main results (per-user cosine similarity, 2,000 frames per point and user):
 
-* At equal channel uses and per-user power under independent fading, one model
-  lies within 0.005 of the best learned static partition, Static ODS-`U`, at
-  every load from 5 dB on, and exceeds it by 0.006 to 0.025 at 0 dB through its
-  SNR-dependent profile.
-* At light load it exceeds a fixed six-part partition by up to 0.165, since a
-  static user confined to its own part leaves the energy and the channel uses
-  of absent users idle. With the energy `d_s/U`, Static ODS-6 leads by at most
-  0.009 up to 10 dB and trails from 15 dB on at `U <= 5`.
-* Re-dimensioned ToDMA leads by up to 0.013 at high SNR. The masks need the
-  announced active set.
+* The proposal exceeds the learned partition of every load (Learned ODS-`U`,
+  three-seed means) by 0.006 to 0.047, and a learned nested code with the same
+  masks by 0.006 to 0.022.
+* At its design load, a fixed partition with the same code (Static ODS-`k`)
+  equals the proposal. At light load the proposal exceeds Static ODS-6 by up to
+  0.137 and Static ODS-4 by up to 0.101, through the energy and, for short
+  parts, the channel uses of absent users.
+* Re-dimensioned ToDMA leads by at most 0.003 at four of 28 points. The masks
+  need the announced active set.
+* Under slot-varying fading with offsets of up to 6 dB, the channel-aware masks
+  exceed the load masks at 0 dB by 0.043 (`U = 1`) to 0.151 (`U = 6`), and by
+  up to 0.346 for the weakest user of a frame. At `U = 6`, Static ODS-6 with
+  the same known gains lies within 0.003 in the mean. The channel-aware masks
+  lead it by 0.028 for the weakest user at 0 dB, 0.018 of it from the slot
+  counts and the energy that follows them. Below six users, the variants of
+  Static ODS-4 and ODS-6 with known gains and the energy `d_s/U` lie within
+  0.002 (`U <= 3`) and trail by 0.002 to 0.013, respectively. A user of the
+  channel-aware masks spends `n * d_s/N` for its `n` granted slots, which
+  concentrates the energy on fewer uses, with no peak-power limit.
+* Learned transceivers with channel state (single runs, `Code/pilot_corr.py`)
+  trail the channel-aware masks or tie them within 0.001, with leads of at most
+  0.0006. With the load masks, the learned nested code of these runs exceeds
+  the closed-form load masks at `U = 4` to 6 by up to 0.025 at 0 and 5 dB. Its
+  receiver knows the slot gains and its draws differ, so the cause is not
+  isolated.
 
 ## Conventions
 
 * Power: every user transmits at unit average power over the channel uses it
-  occupies. A Static ODS-`k` user spends `d_s/k` at every load `U <= k`, and the
-  proposal and Static ODS-`U` spend `d_s/U`. At `U = 5` the 128-use slots give
-  ranks 0 to 3 of the proposal 640 uses at average power 0.96 and rank 4 512
-  uses at 1.2. Transmission is analog without a peak-power constraint.
+  occupies (energy `d_s/U`; at `U = 5` ranks 0 to 3 have 640 uses at average
+  power 0.96 and rank 4 has 512 uses at 1.2). A Static ODS-`k` user spends
+  `d_s/k`. Transmission is analog without a peak-power constraint.
 * Channel: each user has its own Rayleigh coefficient `h_u ~ CN(0,1)`, constant
   within a block, with the phase pre-compensated at the transmitter, and the
-  noise variance is `1/SNR`. The receiver uses no estimate of the individual
-  gains.
-* Metric: per-user cosine similarity between the centered BERT embedding and
-  its estimate. The aggregate fidelity `S(U)` is the sum over the active users
-  and is compared only between schemes that serve the same `U` users.
+  noise variance is `1/SNR` per real use. Section IV-E replaces it by
+  slot-varying fading: per user `h_{u,s} = 0.7 h_{u,s-1} + sqrt(0.51) w_{u,s}`
+  over the 24 slots, independent across users, with an offset uniform within
+  +-6 dB per user and frame (tag `nf6`). The receiver knows the slot gains, or
+  those of the previous block with correlation `eta` (`--delay`), and every
+  user pre-compensates all slot phases.
+* Metric: per-user CosSim between the centered BERT embedding and its estimate.
+  The aggregate fidelity `S(U)` is compared only between schemes that serve the
+  same `U` users.
 
 ## Schemes
 
-| Name in the paper | Run names | Description |
+| Name in the paper | Source | Description |
 |---|---|---|
-| Proposed (one model) | `shared_dyns`, evaluated as `shared_dyns_clamp` | nested expanded embedding, dynamic slot masks, SNR-dependent profile held above 25 dB, one shared decoder |
-| SNR-independent profile | `shared_dyn` | the same design with a per-load profile that ignores the SNR |
-| Static ODS-`k` | `ortho_U<k>` | `k` exclusive parts of `floor(d_s/k)` uses, learned linear projection, LN, and linear decoder, one model per `k` |
-| Static ODS-6, energy `d_s/U` | `ortho_U6` evaluated by `rev_extra.py energy` | a Static ODS-6 user increases its power on its own part to spend `d_s/U`, evaluated at the SNR plus `10 log10(6/U)` dB |
+| Proposed | `Code/pca_eval.py`, `proposal/opt` in `data/extra/pca_eval.json` | PCA nested code, dynamic masks, closed-form power, blind-gain Wiener receiver |
+| Static ODS-`k` | `static` in `pca_eval.json` | the same code on `k` fixed parts of `d_s/k` uses, energy `d_s/k`, parts of absent users silent |
+| Static ODS-`k` with energy `d_s/U` | `matched` in `pca_eval.json` | a Static ODS-`k` user increases its power on its part to spend `d_s/U` |
+| Learned ODS-`k` | `ortho_U<k>` | learned linear projection, LN, and linear decoder per part, SNR-aware MAML, one model per `k` |
+| Learned nested code | `shared_dyns`, evaluated as `shared_dyns_clamp`; `shared_dyns_pcainit` | one learned transceiver with the same dynamic masks and an SNR-dependent profile; also started from the PCA basis (`rev_run.py --init pca`) |
 | Overlapping masks | `shared_agn` | learned overlapping masks and user-wise attention of the original submission, one model for all loads |
-| idle masks reassigned | `shared_abs` | Overlapping masks with the masks of absent users reassigned to the active users |
 | ToDMA, best `T` | `extra/todma_redim.json` | single-antenna adaptation: first `T` BERT tokens over `T` slots of `3072/T` uses, OMP detection, genie token count per slot and user association |
-| per-load retrains of the submitted design | `shared_U<U>` | Overlapping masks retrained for each load `U` (supplementary results) |
-| per-load receive offset | `shared_nest` | earlier variant of the proposal, removed after one seed failed at `U = 1` (not reported in the paper) |
+| Channel-aware masks | `csiq` in `data/pilot_corr/pca_csi_*.json` | ordered groups on the strongest slots, power (13), greedy slot grant at `d_s/N` per slot, blind per-slot gain estimate |
+| Load masks under slot-varying fading | `fixed` in `pca_csi_*.json` | the proposal with the masks (4), no channel state at the transmitter |
+| Static ODS-`k` with known gains | `ods` (energy `d_s/k`), `odsm` (energy `d_s/U`, files `_x`) | `N/k` slots per user by the assignment maximizing the sum of `log(1 + gamma g^2)`, power (13) |
+| Controls of Section IV-E | `csi` (slot counts of the load masks), `csiqe` (counts capped at the load masks, files `_e`), `odsfix` (fixed contiguous parts) | separate placement, slot counts, and channel state |
+| Learned references with channel state | `data/pilot_corr/{prop,ods<k>}_<mode>[_nf6]_s1.json` | single runs (seed 1) of the learned nested code and Learned ODS-`k` with the placements `fixed`, `block`, `csisort`, `netq`, `netpw`, `netqpw` (mask network with slot counts and per-slot weights) |
 
 ## Layout
 
 | Path | Content |
 |---|---|
-| `Code/rev_lib.py` | shared library: data split and embedding cache, transceivers (`SharedMuxNest` is the proposal), channel, MAML training, adaptation, evaluation |
-| `Code/rev_run.py` | trains and evaluates one configuration, writes `data/<name>_s<seed>.json` and a checkpoint in `data/ckpt/` |
-| `Code/dyn_queue.sh` | every run of the load-adaptive design, by stage: `main`, `clamp`, `ablate`, `eval`, `history`, `todma`, `report` |
-| `Code/rev_queue.sh` | training runs of the static partitions, of Overlapping masks, and of the per-load retrains (stages `main`, `main_ortho`, `scale`, `general`) |
-| `Code/rev_extra.py` | evaluations of stored checkpoints: `reeval`, `noadapt`, `robust`, `probe`, `cost`, `width`, `energy`, and the modes of the earlier revision |
-| `Code/todma_redim.py` | ToDMA re-dimensioned to 24, 32, and 48 slots of the same block |
-| `Code/rev_dyn_numbers.py` | prints every number of the paper and of its supplementary results into `data/dyn_numbers.md`, from `data/` only |
-| `Code/rev_dynamic_fig.py` | regenerates Figs. 2 and 3 and the supplementary figure `fig4_dyn_agg.pdf` from `data/` only |
+| `Code/pca_eval.py` | every evaluation of the closed-form proposal and of Static ODS-`k`: loads, SNRs, variants, `K`, robustness, SST-2, DistilBERT, classifiers |
+| `Code/pca_mc.py` | Monte Carlo check of the closed-form error and allocation |
+| `Code/pca_numbers.py` | prints every number of the paper and of its supplementary results into `data/pca_numbers.md`, from `data/` only |
+| `Code/pca_fig.py` | regenerates Figs. 2 and 3 and the supplementary figure `fig4_pca_agg.pdf` from `data/` only |
+| `Code/rev_lib.py`, `Code/rev_run.py` | learned references: data split and embedding cache, transceivers (`SharedMuxNest` is the learned nested code, `OrthoDS` the learned partition), MAML training, adaptation, evaluation |
+| `Code/rev_queue.sh`, `Code/dyn_queue.sh`, `Code/extra_runs.sh`, `Code/rev_extra.py` | training and evaluation runs of the learned references |
 | `Code/mask_partition.py` | own-energy share of the transmitted energy per mask (Overlapping masks) |
+| `Code/todma_redim.py` | ToDMA re-dimensioned to 24, 32, and 48 slots of the same block |
+| `Code/pca_csi.py` | closed-form channel-aware masks and their references under slot-varying fading (Section IV-E), CPU |
+| `Code/csi_queue.sh`, `Code/csi_extra_queue.sh`, `Code/csi_equal_queue.sh` | every `pca_csi.py` run of the paper and of the supplementary results |
+| `Code/pilot_corr.py`, `Code/corr_queue.sh` | learned references with channel state, one GPU |
+| `data/pilot_corr/` | results of `pca_csi.py` (`pca_csi_*.json`) and of `pilot_corr.py` (`*_s1.json`) |
 | `Code/rev_cache.py` | builds the embedding caches `data/emb_*.pt` (not stored; AG News, SST-2, BERT-base, DistilBERT) |
-| `Code/extra_runs.sh`, `Code/rev_collect.py`, `Code/rev_replot.py`, `Code/letter_mechanism.py`, `Code/rev_diag.py`, `Code/rev_latency.py`, `Code/rev_pilot*.sh` | scripts of the earlier revision, kept with its results. The current paper reuses only the runs of `extra_runs.sh` with the energy `d_s/U` at `k = 4` and 6 |
-| `Code/bert_semcom.py`, `Code/cl_experiments.py`, `Code/cl_todma_load.py`, `Code/fig_cl/` | ToDMA reference of the original submission |
-| `data/*.json` | one file per run: configuration, per-SNR per-user CosSim at every evaluated load, worst user, probe accuracy, robustness evaluations |
-| `data/extra/` | evaluations of stored checkpoints (`rev_extra.py`, `todma_redim.py`, `mask_partition.py`) |
-| `data/dyn_numbers.md` | every number quoted in the paper and in its supplementary results |
-| `data/ckpt/` | checkpoints of Proposed (one model) for seeds 1 to 3, of Static ODS-1 to Static ODS-6 for seed 1, and of Overlapping masks and the per-load model at `U = 4` of the earlier revision |
-| `fig_cl/` | Figs. 1 to 3 of the paper and the supplementary figure `fig4_dyn_agg.pdf` |
+| `Code/rev_dyn_numbers.py`, `Code/rev_dynamic_fig.py`, and the other `rev_*` scripts | numbers and figures of the earlier versions, kept with their results |
+| `data/extra/pca_eval.json`, `data/extra/pca_mc.json` | results of the closed-form proposal |
+| `data/*.json`, `data/extra/` | one file per learned run and the evaluations of stored checkpoints |
+| `data/pca_numbers.md`, `data/dyn_numbers.md` | every number quoted in the paper (closed form) and of the learned references |
+| `data/ckpt/` | checkpoints of the learned nested code for seeds 1 to 3, of Learned ODS-1 to 6 for seed 1, and of earlier designs |
+| `fig_cl/` | Figs. 1 to 3 of the paper and the supplementary figure `fig4_pca_agg.pdf` |
 
 ## Figure and table map
 
-| Item | Runs | Script |
+| Item | Data | Script |
 |---|---|---|
 | Fig. 1 | transceiver diagram (TikZ) | none |
-| Fig. 2, per-user CosSim versus SNR | `shared_dyns_clamp_s{1,2,3}`, `ortho_U{1..6}_s{1,2,3}` | `rev_dynamic_fig.py` |
-| Fig. 3, per-user CosSim versus load | `shared_dyns_clamp_s{1,2,3}`, `ortho_U{1..6}_s{1,2,3}` | `rev_dynamic_fig.py` |
-| Supplementary figure `fig4_dyn_agg.pdf`, `S(U)` at 10 dB | the runs of Fig. 3 | `rev_dynamic_fig.py` |
-| Sec. IV-B, matched energy | `extra/energy_ortho_U{1..6}_s{1,2,3}` | `rev_extra.py energy` |
-| Sec. IV-B, no adaptation and effective width | `extra/noadapt_shared_dyns_s*`, `extra/width_shared_dyn*_s1` | `rev_extra.py noadapt`, `width` |
-| Sec. IV-B, ToDMA | `extra/todma_redim.json` | `todma_redim.py` |
-| Table II | `shared_dyns_clamp_s*`, `ortho_U1_s*`, `ortho_U6_s*`, `shared_dyn_s*`, `shared_dyns_{uniform,freezetx,joint,K1,K8,slots12,slots48}_s1`, `shared_dyns_s*` (without the hold), `shared_agn_s*`, `shared_abs_s1`, `extra/energy_ortho_U6_s*`, `extra/todma_redim.json` | `rev_dyn_numbers.py` |
-| Sec. IV-C, energy division of Overlapping masks | `extra/mask_partition.json` | `mask_partition.py` (needs checkpoints not stored here) |
-| Table III | `extra/robust_shared_dyns_s1`, `ortho_U4_s1`, `sst2_shared_dyns_s1`, `sst2_ortho_U4_s1`, `distil_shared_dyns_s1`, `distil_ortho_U4_s1`, `shared_dyns_U8_s1`, `ortho_U8_s1`, `extra/probe_shared_dyns_s1`, `extra/cost_*_s1` | `rev_dyn_numbers.py` |
+| Fig. 2, per-user CosSim versus SNR | `pca_eval.json` (proposal), `ortho_U{1..6}_s{1,2,3}` | `pca_fig.py` |
+| Fig. 3, per-user CosSim versus load | `pca_eval.json` (proposal, static) | `pca_fig.py` |
+| Supplementary `S(U)` figure | `pca_eval.json` | `pca_fig.py` |
+| Table I, ablations and reference designs | `pca_eval.json` (variants, `K`, matched), `shared_dyns_clamp_s*`, `shared_dyns_pcainit_s1`, `ortho_U*_s*`, `shared_agn_s*`, `extra/todma_redim.json` | `pca_numbers.py` |
+| Section IV-D, robustness and generality (text) | `pca_eval.json` (robust, sst2, distil, classifiers), `ortho_U4_s1`, `sst2_ortho_U4_s1`, `distil_ortho_U4_s1`, `ortho_U8_s1` | `pca_numbers.py` |
+| Section IV-E, slot-varying fading (text) | `pilot_corr/pca_csi_U*_k{6,4}_rho*_nf6*.json` | `pca_csi.py`, `pca_numbers.py` (Section 12 of `pca_numbers.md`) |
+| Learned references with channel state | `pilot_corr/*_s1.json` | `pilot_corr.py`, `pca_numbers.py` |
+| Energy division of Overlapping masks | `extra/mask_partition.json` | `mask_partition.py` |
+| Monte Carlo check | `extra/pca_mc.json` | `pca_mc.py` |
 
 ## Reproduction
 
 Requirements: Python 3.10 or later, PyTorch, `transformers`, `datasets`,
-`numpy`, `matplotlib`. Run the scripts from `Code/`.
+`numpy`, `scipy`, `matplotlib`. Run the scripts from `Code/`.
 
 ```bash
 cd Code
-python rev_cache.py                                          # embedding caches
-PY=python EP=150 BS=64 N_PAR=3 bash rev_queue.sh main_ortho  # Static ODS-1 to 6, three seeds
-PY=python EXTRA="--per-user-rx" EP=150 BS=64 N_PAR=3 bash rev_queue.sh main   # Overlapping masks, per-load retrains
-PY=python EP=150 BS=64 N_PAR=3 bash rev_queue.sh scale       # includes Static ODS-8 (Table III)
-PY=python EP=150 BS=64 N_PAR=3 bash rev_queue.sh general     # includes Static ODS-4 and 6 on SST-2, Static ODS-4 with DistilBERT
-PY=python bash dyn_queue.sh main                             # Proposed (one model), three seeds
-PY=python bash dyn_queue.sh clamp
-PY=python bash dyn_queue.sh ablate                           # also eval, history, todma
-python rev_extra.py energy ../data/ckpt/ortho_U4_s{1,2,3}.pt ../data/ckpt/ortho_U6_s{1,2,3}.pt   # energy d_s/U at k = 4 and 6
-PY=python bash dyn_queue.sh report                           # data/dyn_numbers.md and the figures
+python rev_cache.py          # embedding caches (AG News, SST-2, BERT-base, DistilBERT)
+python pca_eval.py           # closed-form proposal and Static ODS-k, about two minutes on a CPU
+python pca_mc.py             # Monte Carlo check of the closed forms
+python pca_numbers.py        # data/pca_numbers.md
+python pca_fig.py            # Figs. 2 and 3 and the S(U) figure
+bash csi_queue.sh && bash csi_extra_queue.sh && bash csi_equal_queue.sh   # Section IV-E, CPU
+python pca_numbers.py        # again, to add Section 12
 ```
 
-`rev_dyn_numbers.py` and `rev_dynamic_fig.py` read only the stored results, so
-the numbers and figures can be regenerated without training. The evaluations of
-`dyn_queue.sh eval` need the checkpoints of all seeds, which the training runs
-write to `data/ckpt/`.
+The learned references with channel state take about one hour per run on one
+GPU: `GPU=0 bash corr_queue.sh`.
 
-Training uses 150 epochs of 100 steps with 64 frames per task, four SNR tasks
-per meta-batch drawn from 0 to 25 dB, an inner rate of 5e-4, and Adam at 1e-3.
-Every point is evaluated on 2,000 held-out frames, after one inner step on 256
-training frames unless stated otherwise. Training seeds are 1, 2, and 3, and
-the evaluation seed is 123. The runs of the load-adaptive design and of
-`shared_abs` used an NVIDIA RTX PRO 5000 Blackwell (CUDA, torch 2.11.0,
-transformers 5.22.1). The static partitions used an NVIDIA RTX A4500 (CUDA,
-torch 2.11, seeds 1 and 2) and an Apple M5 Max (MPS, torch 2.5.1, seed 3), and
-Overlapping masks (`shared_agn_s*`) and the per-load retrains used the Apple
-M5 Max. GPU training is not bit-exact, so a rerun reproduces the reported
-values within the seed spread of the paper.
+The learned references are trained as in the earlier versions:
+
+```bash
+PY=python EP=150 BS=64 N_PAR=3 bash rev_queue.sh main_ortho      # Learned ODS-1 to 6, three seeds (also stage scale, general)
+PY=python EXTRA="--per-user-rx" EP=150 BS=64 N_PAR=3 bash rev_queue.sh main   # Overlapping masks
+PY=python bash dyn_queue.sh main && PY=python bash dyn_queue.sh clamp        # learned nested code
+python rev_run.py --name shared_dyns_pcainit --scheme shared_dyns --init pca --seed 1 --K 4 --U 6 --U-max 6 \
+    --agnostic --epochs 150 --steps 100 --batch 64 --trials 2000 --eval-U 1 2 3 4 5 6 --out-dir ../data
+```
+
+The closed-form evaluations use the evaluation seed 123 + SNR, so the variants
+of one scenario share their draws. The runs with the gains of the previous block
+draw their own, and `pca_numbers.md` also gives their losses corrected by the
+load masks. The learned references use the training seeds 1, 2, and 3
+and were trained on NVIDIA GPUs and an Apple M5 Max. GPU training is not
+bit-exact, so a rerun reproduces their values within the seed spread of the
+paper.
 
 ## Earlier versions
 
-The code and results of the original submission are kept at the tag
-`original-submission`, and those of the earlier revision with overlapping
-masks at the tag `parity-revision-20261021`.
+The original submission is kept at the tag `original-submission`, the revision
+with overlapping masks at `parity-revision-20261021`, and the learned nested
+code as the proposal at `learned-nested-20261103`.
 
 ## Citation
 
