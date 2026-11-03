@@ -1,14 +1,13 @@
 # =========================================================
-# cl_experiments.py — IEEE Communications Letters revision
+# cl_experiments.py — experiments of the original submission
 #
-# New experiments addressing TVT reviewer comments:
-#   R2-2 : held-out train/test split (8000/2000, disjoint)
-#   R1-2 : bandwidth-expansion sweep K = 1, 2, 4, 8 at U = 4
-#   R1-5c: static random-projection mask baseline (frozen masks)
-#   R2-3 : ToDMA-style token-domain CS baseline (same channel budget)
-#   R1-5b: DistilBERT generalization check
-#   R2-4 : downstream AG News topic accuracy (linear probe)
-#   R1-3 : runtime latency / parameter count
+#   held-out train/test split (8000/2000, disjoint)
+#   bandwidth-expansion sweep K = 1, 2, 4, 8 at U = 4
+#   static random-projection mask baseline (frozen masks)
+#   ToDMA-style token-domain baseline on the same block
+#   DistilBERT generalization check
+#   downstream AG News topic accuracy (linear classifier)
+#   runtime latency / parameter count
 #
 # All evaluations are on the held-out test split.
 # Outputs: fig_cl/cl_results.json, fig_cl/cl_convergence.csv

@@ -10,7 +10,7 @@
 #                               # Static ODS-k with energy d_s/U
 #   bash dyn_queue.sh history   # earlier designs reported in Table II and the response letter
 #   bash dyn_queue.sh todma     # re-dimensioned ToDMA, 500 frames per point
-#   bash dyn_queue.sh report    # data/dyn_numbers.md and Figs. 2, 3, R1.1 from data/ only
+#   bash dyn_queue.sh report    # data/dyn_numbers.md and the result figures from data/ only
 # Prerequisites: the embedding caches (python rev_cache.py) and, from rev_queue.sh, the
 # Static ODS-k models ortho_U{1..6}_s{1,2,3} (stage main_ortho), ortho_U8_s1 (stage scale),
 # the per-load retrains shared_U{1..6}_s{1,2,3} and Overlapping masks shared_agn_s{1,2,3}

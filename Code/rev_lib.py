@@ -1,7 +1,7 @@
 # =========================================================
-# rev_lib.py — shared library for the CL2026-2366 revision
+# rev_lib.py — shared library of the load-adaptive semantic multiplexing letter
 #
-# Revised system model (reviewer comments R1.3, R1.4):
+# System model:
 #   * per-user power normalization: every user scales its own masked
 #     signal to the energy d_s/U per block, so the total block energy is
 #     d_s for every scheme and every U (no joint normalization);

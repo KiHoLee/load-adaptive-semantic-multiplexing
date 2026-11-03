@@ -1,6 +1,5 @@
 # =========================================================
-# rev_extra.py — additional evaluations requested by the 2026-10-16 audit
-# of the CL2026-2366 response letter (existing checkpoints, no training).
+# rev_extra.py — additional evaluations of stored checkpoints (no training).
 #
 #   noadapt <ckpt...>       evaluate without the one-step adaptation
 #                           (adapt_steps=0) at --U loads and all SNRs

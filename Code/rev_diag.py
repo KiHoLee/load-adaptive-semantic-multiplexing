@@ -1,6 +1,6 @@
 # =========================================================
-# rev_diag.py — mechanism diagnostics of a trained shared-block model
-# (reviewer comments R1.5 / R2.4): where does the separation come from?
+# rev_diag.py — mechanism diagnostics of a trained shared-block model:
+# where does the separation of the users come from?
 #
 # For a checkpoint data/ckpt/<name>_s<seed>.pt it reports, on held-out
 # frames at a given SNR,
