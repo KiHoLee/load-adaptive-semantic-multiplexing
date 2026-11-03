@@ -16,7 +16,13 @@ from rev_lib import (DATA, EVAL_SNRS, TRAIN_SNRS, get_device, set_seed,
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--name", required=True)
-    ap.add_argument("--scheme", choices=["shared", "ortho", "shared_la", "shared_lad"], default="shared")
+    ap.add_argument("--scheme", choices=["shared", "ortho", "shared_la", "shared_lad", "shared_abs",
+                                         "shared_nest", "shared_nestd", "shared_nests", "shared_dyn", "shared_dyns"],
+                    default="shared")
+    ap.add_argument("--n-slots", type=int, default=24, help="shared_nest: slots of the block")
+    ap.add_argument("--mask-init", choices=["randn", "blocks"], default="randn",
+                    help="shared_abs: 'blocks' starts the base masks as disjoint 0/1 blocks of d_s/U_max "
+                         "(with --freeze mask, a fixed orthogonal partition that absorbs idle blocks)")
     ap.add_argument("--U", type=int, default=4)
     ap.add_argument("--U-max", type=int, default=None,
                     help="number of stored masks (agnostic training)")
@@ -76,12 +82,22 @@ def main():
     set_seed(args.seed)
     model = build_model(args.scheme, U_max, d_b, args.K,
                         attention=not args.no_attention,
-                        per_user_rx=args.per_user_rx, n_loads=(args.U_train_max if args.scheme in ('shared_la', 'shared_lad') else None)).to(device)
+                        per_user_rx=args.per_user_rx, n_loads=(args.U_train_max if args.scheme in ('shared_la', 'shared_lad') else None),
+                        n_slots=args.n_slots).to(device)
+    if args.mask_init == "blocks":
+        with torch.no_grad():
+            w = model.d_s // U_max
+            model.mask.zero_()
+            for k in range(U_max):
+                model.mask[k, k * w:(k + 1) * w] = 1.0
     frozen = set()
     if "mask" in args.freeze:
         frozen.add("mask")
     if "tx" in args.freeze:
         frozen.update({"tx_w", "tx_b", "tx_ln_w", "tx_ln_b"})
+    if "profile" in args.freeze:       # shared_dyn: uniform transmit and receive profiles
+        frozen.update({n for n, _ in model.named_parameters()
+                       if n in ("tx_gain", "rx_gain", "tx_slope", "rx_slope")})
     train_keys = [n for n, _ in model.named_parameters() if n not in frozen]
     cfg = dict(name=args.name, seed=args.seed, scheme=args.scheme, U=args.U,
                U_max=U_max, K=args.K, d_b=d_b, d_s=d_b * args.K,
@@ -92,7 +108,7 @@ def main():
                train_snrs=list(args.train_snrs), lam=args.lam,
                fading=args.fading, freeze=sorted(frozen),
                attention=not args.no_attention, per_user_rx=args.per_user_rx,
-               dataset=args.dataset,
+               mask_init=args.mask_init, n_slots=args.n_slots, dataset=args.dataset,
                model=args.model, trials=args.trials, train_keys=train_keys,
                device=str(device), torch=torch.__version__)
     log(f"  cfg: {json.dumps({k: v for k, v in cfg.items() if k != 'train_keys'})}")

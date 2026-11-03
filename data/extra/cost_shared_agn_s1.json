@@ -1,0 +1,10 @@
+{
+ "name": "shared_agn",
+ "seed": 1,
+ "mode": "cost",
+ "device": "cuda",
+ "params": 16571904,
+ "latency_ms": {
+  "4": 0.8958041667938232
+ }
+}

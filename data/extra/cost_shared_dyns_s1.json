@@ -1,0 +1,10 @@
+{
+ "name": "shared_dyns",
+ "seed": 1,
+ "mode": "cost",
+ "device": "cuda",
+ "params": 4802304,
+ "latency_ms": {
+  "4": 1.1942148208618164
+ }
+}

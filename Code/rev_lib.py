@@ -353,7 +353,158 @@ class SharedMuxLA(nn.Module):
         return (b_hat, {"x": x, "y": y}) if return_mid else b_hat
 
 
-def build_model(scheme, U_max, d_b, K, attention=True, per_user_rx=False, n_loads=None):
+class SharedMuxAbs(nn.Module):
+    """Expanded shared block with absorbing dynamic masks (2026-11-03). One trained model with
+    U_max base masks. At the announced active set, every idle base mask is absorbed by one active
+    user (idle masks in index order, dealt round-robin to the active users in index order), so the
+    U active users split the whole block into U shares and a light load uses the idle dimensions.
+    The transmit projection and the user-specific linear decoders are shared by all loads; the
+    receiver normalization and a per-(load, user) input gain follow the load."""
+    def __init__(self, U_max, d_b, d_s, attention=True):
+        super().__init__()
+        self.U_max, self.d_b, self.d_s = U_max, d_b, d_s
+        self.attention, self.per_user_rx = attention, True
+        self.tx_w = nn.Parameter(torch.empty(d_s, d_b))
+        self.tx_b = nn.Parameter(torch.zeros(d_s))
+        self.tx_ln_w = nn.Parameter(torch.ones(d_s))
+        self.tx_ln_b = nn.Parameter(torch.zeros(d_s))
+        self.mask = nn.Parameter(torch.randn(U_max, d_s) * 0.5)             # base masks [user, dim]
+        self.query = nn.Parameter(torch.randn(U_max, d_s) * 0.5)
+        self.rx_ln_w = nn.Parameter(torch.ones(U_max, d_s))                  # [load-1, dim]
+        self.rx_ln_b = nn.Parameter(torch.zeros(U_max, d_s))
+        self.rx_gain = nn.Parameter(torch.ones(U_max, U_max, d_s))           # [load-1, user, dim]
+        self.rx_w = nn.Parameter(torch.empty(U_max, d_b, d_s))
+        self.rx_b = nn.Parameter(torch.zeros(U_max, d_b))
+        for k in range(U_max):
+            nn.init.kaiming_uniform_(self.rx_w.data[k], a=math.sqrt(5))
+        nn.init.kaiming_uniform_(self.tx_w, a=math.sqrt(5))
+        nn.init.uniform_(self.tx_b, -1 / math.sqrt(d_b), 1 / math.sqrt(d_b))
+        nn.init.uniform_(self.rx_b, -1 / math.sqrt(d_s), 1 / math.sqrt(d_s))
+
+    def params(self):
+        return {k: v for k, v in self.named_parameters()}
+
+    def owners(self, idx):
+        """(B,U) active user indices -> (B,U,U_max) 0/1 matrix: base mask k is used by active user j."""
+        B, U = idx.shape
+        ar = torch.arange(self.U_max, device=idx.device)
+        active = torch.zeros(B, self.U_max, dtype=torch.bool, device=idx.device)
+        active[torch.arange(B, device=idx.device).unsqueeze(1), idx] = True
+        srt = torch.sort(idx, dim=1).values                                # active users in index order
+        rank = torch.cumsum((~active).long(), 1) - 1                       # rank of each idle mask
+        own = torch.gather(srt, 1, (rank.clamp(min=0) % U))                # round-robin owner
+        own = torch.where(active, ar.unsqueeze(0).expand(B, -1), own)       # (B,U_max) mask -> owner
+        return (own.unsqueeze(1) == idx.unsqueeze(2)).float()
+
+    def decode(self, z, idx, p):
+        B, U, _ = z.shape
+        zf = z.reshape(B * U, self.d_s)
+        allk = torch.stack([F.linear(zf, p["rx_w"][k], p["rx_b"][k]) for k in range(self.U_max)], 0)
+        sel = allk[idx.reshape(-1), torch.arange(B * U, device=z.device)]
+        return sel.reshape(B, U, self.d_b)
+
+    def forward(self, b, idx, snr_db, gains, p=None, return_mid=False):
+        if p is None:
+            p = self.params()
+        B, U, _ = b.shape
+        m = torch.einsum("buk,kd->bud", self.owners(idx), p["mask"])     # absorbed masks (B,U,d_s)
+        e = F.layer_norm(F.linear(b, p["tx_w"], p["tx_b"]), (self.d_s,), p["tx_ln_w"], p["tx_ln_b"])
+        x = e * m
+        x = x * torch.sqrt(self.d_s / U / (x.pow(2).sum(-1, keepdim=True) + 1e-8))
+        y = (gains.unsqueeze(-1) * x).sum(1)
+        y = y + math.sqrt(1.0 / (10 ** (snr_db / 10.0))) * torch.randn_like(y)
+        r = y.unsqueeze(1) * m
+        if self.attention and U > 1:
+            q = p["query"][idx]
+            a = torch.softmax(KAPPA * torch.einsum("bud,bvd->buv", F.normalize(q, dim=-1), F.normalize(r, dim=-1)), dim=-1)
+            z = torch.einsum("buv,bvd->bud", a, r)
+        else:
+            a = None
+            z = r
+        z = F.layer_norm(z, (self.d_s,), p["rx_ln_w"][U - 1], p["rx_ln_b"][U - 1])
+        b_hat = self.decode(z * p["rx_gain"][U - 1][idx], idx, p)
+        return (b_hat, {"attn": a, "x": x, "y": y}) if return_mid else b_hat
+
+
+class SharedMuxNest(nn.Module):
+    """Nested expanded embedding with dynamic slot masks (2026-11-03). The block is cut into n_slots
+    slots of d_s/n_slots dimensions. At load U, slot s belongs to the active user of rank s mod U
+    (ranks by user index), so the U users split the whole block and a light load hands every user
+    more slots. Each user transmits the leading segments of its expanded embedding, in order, on
+    its own slots, so the shared projection learns a nested code whose first segments stand alone
+    and whose later segments refine them. A per-(load, segment) transmit profile shapes the energy
+    d_s/U; the receiver gathers a user's slots in segment order, normalizes them blindly (no gain
+    estimate), and applies one linear decoder shared by all users (or one per load)."""
+    def __init__(self, U_max, d_b, d_s, n_slots=24, per_load_rx=False, snr_profile=False, rx_offset=True):
+        super().__init__()
+        assert d_s % n_slots == 0
+        self.U_max, self.d_b, self.d_s, self.S, self.seg = U_max, d_b, d_s, n_slots, d_s // n_slots
+        self.per_load_rx, self.snr_profile, self.rx_offset = per_load_rx, snr_profile, rx_offset
+        self.tx_w = nn.Parameter(torch.empty(d_s, d_b))
+        self.tx_b = nn.Parameter(torch.zeros(d_s))
+        self.tx_ln_w = nn.Parameter(torch.ones(d_s))
+        self.tx_ln_b = nn.Parameter(torch.zeros(d_s))
+        self.tx_gain = nn.Parameter(torch.ones(U_max, d_s))                 # [load-1, segment dims]
+        self.rx_gain = nn.Parameter(torch.ones(U_max, d_s))
+        if rx_offset:        # removed in shared_dyn: with small gains the offset can dominate (seed 3, U=1)
+            self.rx_off = nn.Parameter(torch.zeros(U_max, d_s))
+        if snr_profile:      # log-linear SNR dependence of the transmit and receive profiles
+            self.tx_slope = nn.Parameter(torch.zeros(U_max, d_s))
+            self.rx_slope = nn.Parameter(torch.zeros(U_max, d_s))
+        n_rx = U_max if per_load_rx else 1
+        self.rx_w = nn.Parameter(torch.empty(n_rx, d_b, d_s))
+        self.rx_b = nn.Parameter(torch.zeros(n_rx, d_b))
+        for k in range(n_rx):
+            nn.init.kaiming_uniform_(self.rx_w.data[k], a=math.sqrt(5))
+        nn.init.kaiming_uniform_(self.tx_w, a=math.sqrt(5))
+        nn.init.uniform_(self.tx_b, -1 / math.sqrt(d_b), 1 / math.sqrt(d_b))
+        nn.init.uniform_(self.rx_b, -1 / math.sqrt(d_s), 1 / math.sqrt(d_s))
+
+    def params(self):
+        return {k: v for k, v in self.named_parameters()}
+
+    def layout(self, idx):
+        """rank (B,U) of each active user; slot -> (owner rank, segment) at load U."""
+        U = idx.shape[1]
+        rank = torch.argsort(torch.argsort(idx, dim=1), dim=1)
+        s = torch.arange(self.S, device=idx.device)
+        return rank, s % U, s // U
+
+    def forward(self, b, idx, snr_db, gains, p=None, return_mid=False):
+        if p is None:
+            p = self.params()
+        B, U, _ = b.shape
+        S, seg = self.S, self.seg
+        rank, own, role = self.layout(idx)
+        e = F.layer_norm(F.linear(b, p["tx_w"], p["tx_b"]), (self.d_s,), p["tx_ln_w"], p["tx_ln_b"])
+        t = (min(snr_db, 25.0) - 15.0) / 15.0     # profile held at its 25 dB value above the training range
+        tg = p["tx_gain"][U - 1] * (torch.exp(p["tx_slope"][U - 1] * t) if self.snr_profile else 1.0)
+        e = (e * tg).reshape(B, U, S, seg)
+        sel = (own.view(1, 1, S) == rank.unsqueeze(-1)).float()            # (B,U,S): slot s is user j's
+        x = e[:, :, role, :] * sel.unsqueeze(-1)                             # segment role[s] on slot s
+        x = x.reshape(B, U, self.d_s)
+        x = x * torch.sqrt(self.d_s / U / (x.pow(2).sum(-1, keepdim=True) + 1e-8))
+        y = (gains.unsqueeze(-1) * x).sum(1)
+        y = y + math.sqrt(1.0 / (10 ** (snr_db / 10.0))) * torch.randn_like(y)
+        ys = y.reshape(B, S, seg)
+        r = torch.arange(S, device=y.device)
+        slot = rank.unsqueeze(-1) + r.view(1, 1, S) * U                      # (B,U,S): slot of segment r
+        valid = (slot < S).float()
+        z = ys[torch.arange(B, device=y.device).view(B, 1, 1), slot.clamp(max=S - 1)] * valid.unsqueeze(-1)
+        z = z.reshape(B, U, self.d_s)
+        vm = valid.repeat_interleave(seg, dim=-1)                            # valid dims (B,U,d_s)
+        n = vm.sum(-1, keepdim=True)
+        mu = (z * vm).sum(-1, keepdim=True) / n
+        var = (((z - mu) * vm) ** 2).sum(-1, keepdim=True) / n
+        z = (z - mu) / torch.sqrt(var + 1e-5) * vm                           # blind normalization
+        rg = p["rx_gain"][U - 1] * (torch.exp(p["rx_slope"][U - 1] * t) if self.snr_profile else 1.0)
+        z = (z * rg + (p["rx_off"][U - 1] if self.rx_offset else 0.0)) * vm
+        k = U - 1 if self.per_load_rx else 0
+        b_hat = F.linear(z, p["rx_w"][k], p["rx_b"][k])
+        return (b_hat, {"x": x, "y": y}) if return_mid else b_hat
+
+
+def build_model(scheme, U_max, d_b, K, attention=True, per_user_rx=False, n_loads=None, n_slots=24):
     if scheme == "shared":
         return SharedMux(U_max, d_b, d_b * K, attention=attention,
                          per_user_rx=per_user_rx)
@@ -363,6 +514,14 @@ def build_model(scheme, U_max, d_b, K, attention=True, per_user_rx=False, n_load
         return SharedMuxLA(U_max, d_b, d_b * K, attention=attention, n_loads=n_loads)
     if scheme == "shared_lad":
         return SharedMuxLA(U_max, d_b, d_b * K, attention=attention, per_load_rx=True, n_loads=n_loads)
+    if scheme == "shared_abs":
+        return SharedMuxAbs(U_max, d_b, d_b * K, attention=attention)
+    if scheme in ("shared_nest", "shared_nestd", "shared_nests"):
+        return SharedMuxNest(U_max, d_b, d_b * K, n_slots=n_slots, per_load_rx=(scheme == "shared_nestd"),
+                             snr_profile=(scheme == "shared_nests"))
+    if scheme in ("shared_dyn", "shared_dyns"):     # nested code and dynamic slot masks without receive offset
+        return SharedMuxNest(U_max, d_b, d_b * K, n_slots=n_slots, snr_profile=(scheme == "shared_dyns"),
+                             rx_offset=False)
     raise ValueError(scheme)
 
 

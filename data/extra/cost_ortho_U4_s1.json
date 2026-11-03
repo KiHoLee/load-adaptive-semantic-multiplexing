@@ -1,0 +1,10 @@
+{
+ "name": "ortho_U4",
+ "seed": 1,
+ "mode": "cost",
+ "device": "cuda",
+ "params": 1184256,
+ "latency_ms": {
+  "4": 0.25855541229248047
+ }
+}

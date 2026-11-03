@@ -6,5 +6,13 @@ data/ckpt/*
 !data/ckpt/shared_U4_s1.pt
 !data/ckpt/shared_agn_s1.pt
 !data/ckpt/ortho_U4_s1.pt
+!data/ckpt/shared_dyns_s1.pt
+!data/ckpt/shared_dyns_s2.pt
+!data/ckpt/shared_dyns_s3.pt
+!data/ckpt/ortho_U1_s1.pt
+!data/ckpt/ortho_U2_s1.pt
+!data/ckpt/ortho_U3_s1.pt
+!data/ckpt/ortho_U5_s1.pt
+!data/ckpt/ortho_U6_s1.pt
 Code/logs/
 letter_mech_table.tex

@@ -24,7 +24,7 @@
 #                           each part passes the linear part of f_rx,u
 #                           (layer-norm centering and gain, then W_u)
 # Outputs: ../data/extra/<mode>_<name>_s<seed>.json (nothing is overwritten
-# in ../data/). Usage examples are in extra_runs.sh.
+# in ../data/). Usage examples are in ains_extra.sh.
 # =========================================================
 import argparse, json, math, os, sys
 import torch
@@ -40,10 +40,11 @@ def load(path, dev):
     ck = torch.load(path, map_location="cpu", weights_only=False)   # torch>=2.6 defaults to weights_only=True
     cfg = ck["cfg"]
     sd = ck["state_dict"]
-    n_loads = sd["mask"].shape[0] if sd["mask"].dim() == 3 else None      # load rows of a load-aware model
+    n_loads = sd["mask"].shape[0] if "mask" in sd and sd["mask"].dim() == 3 else None   # load rows of a load-aware model
     model = build_model(cfg["scheme"], cfg["U_max"], cfg["d_b"], cfg["K"],
                         attention=cfg.get("attention", True),
-                        per_user_rx=cfg.get("per_user_rx", False), n_loads=n_loads).to(dev)
+                        per_user_rx=cfg.get("per_user_rx", False), n_loads=n_loads,
+                        n_slots=cfg.get("n_slots", 24)).to(dev)
     model.load_state_dict(ck["state_dict"])
     return model, cfg
 
@@ -248,7 +249,9 @@ def join_la_eval(ckdir, name, dev, seeds=(1, 2, 3), Us=(1, 2, 3, 4, 5), snrs=(0,
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("mode", choices=["noadapt", "energy", "diag", "join", "join_la"])
+    ap.add_argument("mode", choices=["noadapt", "energy", "diag", "join", "join_la", "robust", "probe", "cost", "reeval",
+                                     "width"])
+    ap.add_argument("--suffix", default="_reeval", help="reeval: output name suffix")
     ap.add_argument("--name", default="shared_la6")
     ap.add_argument("ckpts", nargs="+")
     ap.add_argument("--U", type=int, nargs="*", default=None)
@@ -275,6 +278,76 @@ def main():
             Us = args.U or [cfg["U"]]
             R["U"] = {str(U): evaluate(model, cache, cfg, dev, U, list(EVAL_SNRS), steps=0, trials=args.trials) for U in Us}
             R["U_adapted_check"] = {str(Us[-1]): evaluate(model, cache, cfg, dev, Us[-1], list(EVAL_SNRS), steps=cfg.get("adapt_steps", 1), trials=args.trials)}
+        elif args.mode == "robust":
+            # 2026-11-03: channel conditions of Table III for a stored (one-model) checkpoint, adapted as in rev_run
+            import rev_lib as RL
+            R["U"] = {}
+            for U in (args.U or [cfg["U"]]):
+                ev = lambda **kw: RL.evaluate(model, cache, cfg, dev, U, trials=args.trials, **kw)
+                rec = {"default": {str(s): v["cos"] for s, v in ev().items()}}
+                for deg in (10, 20, 30):
+                    rec[f"phase{deg}"] = {str(s): v["cos"] for s, v in ev(phase_std_deg=deg).items()}
+                for D in (3, 6):
+                    off = [(-D + 2 * D * u / max(U - 1, 1)) for u in range(U)]
+                    rec[f"nearfar{D}"] = {str(s): {"cos": v["cos"], "worst": v["cos_worst_user"], "cos_user": v["cos_user"]}
+                                          for s, v in ev(offsets_db=off).items()}
+                rec["test_common"] = {str(s): v["cos"] for s, v in ev(fading="common").items()}
+                R["U"][str(U)] = rec
+                print(f"  U={U} 10 dB: " + json.dumps({k: (v["10"] if isinstance(v["10"], float) else v["10"]["cos"]) for k, v in rec.items()}), flush=True)
+        elif args.mode == "probe":
+            import rev_lib as RL
+            probe = RL.train_probe(cache, dev)
+            R["probe_clean_acc"] = probe[1]
+            R["U"] = {str(U): {str(s): {"cos": v["cos"], "probe_acc": v["probe_acc"]}
+                               for s, v in RL.evaluate(model, cache, cfg, dev, U, trials=args.trials, probe=probe).items()}
+                      for U in (args.U or [cfg["U"]])}
+        elif args.mode == "width":
+            # 2026-11-03: how much of the block a user of the dynamic-mask model fills at each load and SNR.
+            # Effective width = participation ratio of the mean transmitted energy per dimension of one user;
+            # lead share = fraction of that energy in the user's first d_b dimensions (segment order).
+            import rev_lib as RL
+            R["U"] = {}
+            gen = torch.Generator().manual_seed(123)
+            for U in (args.U or list(range(1, 7))):
+                rec = {}
+                for snr in EVAL_SNRS:
+                    b, idx, _ = sample_frames(cache["test"], 1000, U, cfg["U_max"], dev, gen, cfg["agnostic"])
+                    g = user_gains(1000, U, dev, cfg["fading"])
+                    with torch.no_grad():
+                        _, mid = model(b, idx, float(snr), g, return_mid=True)
+                    x = mid["x"]                                              # (B,U,d_s), slot layout
+                    rank, own, role = model.layout(idx)
+                    seg = model.seg
+                    xs = x.reshape(x.shape[0], U, model.S, seg)               # gather each user's slots in segment order
+                    r = torch.arange(model.S, device=dev)
+                    slot = rank.unsqueeze(-1) + r.view(1, 1, -1) * U
+                    valid = (slot < model.S).float()
+                    z = xs[torch.arange(x.shape[0], device=dev).view(-1, 1, 1), torch.arange(U, device=dev).view(1, -1, 1),
+                           slot.clamp(max=model.S - 1)] * valid.unsqueeze(-1)
+                    e = z.pow(2).mean(0).reshape(U, -1).mean(0)               # mean energy per (segment-ordered) dim
+                    pr = (e.sum() ** 2 / e.pow(2).sum()).item()
+                    lead = (e[:cfg["d_b"]].sum() / e.sum()).item()
+                    rec[str(snr)] = {"eff_width": pr, "lead_db_share": lead, "dims_owned": int(valid[0, 0].sum().item()) * seg}
+                R["U"][str(U)] = rec
+                print(f"  U={U} width " + " ".join(f"{s}:{rec[str(s)]['eff_width']:.0f}" for s in EVAL_SNRS), flush=True)
+        elif args.mode == "reeval":
+            # full adapted evaluation of a stored checkpoint with the current model code, written in the
+            # format of rev_run.py to ../data/<name><suffix>_s<seed>.json
+            import rev_lib as RL
+            R = {"cfg": cfg, "reeval_of": path, "eval": {}}
+            for U in (args.U or [cfg["U"]]):
+                res = RL.evaluate(model, cache, cfg, dev, U, trials=args.trials)
+                R["eval"][str(U)] = {str(s): res[s] for s in EVAL_SNRS}
+                print(f"  U={U}: " + " ".join(f"{s}:{res[s]['cos']:.4f}" for s in EVAL_SNRS), flush=True)
+            f = os.path.join(DATA, f"{cfg['name']}{args.suffix}_s{cfg['seed']}.json")
+            json.dump(R, open(f, "w"), indent=1)
+            print("wrote", f, flush=True)
+            continue
+        elif args.mode == "cost":
+            import rev_lib as RL
+            R["params"] = RL.count_params(model)
+            R["latency_ms"] = {str(U): RL.measure_latency(model, cache, cfg, dev, U) for U in (args.U or [cfg["U"]])}
+            print(f"  params {R['params']} latency {R['latency_ms']}", flush=True)
         elif args.mode == "energy":
             Ud = cfg["U"]
             Us = args.U or list(range(1, Ud + 1))
