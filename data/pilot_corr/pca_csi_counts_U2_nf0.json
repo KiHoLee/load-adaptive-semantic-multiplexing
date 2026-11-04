@@ -1,0 +1,60 @@
+{
+ "args": {
+  "U": 2,
+  "rho": 0.7,
+  "nearfar": 0.0,
+  "frames": 2000,
+  "snrs": [
+   0,
+   10,
+   20
+  ]
+ },
+ "res": {
+  "0": {
+   "count_by_rank": [
+    11.28,
+    12.72
+   ],
+   "equal_count": 12.0,
+   "weakest_more": 0.591,
+   "weakest_equal": 0.359,
+   "weakest_fewer": 0.05,
+   "spearman_mean": -0.8439937597503898,
+   "count_min_max": [
+    8.0,
+    16.0
+   ]
+  },
+  "10": {
+   "count_by_rank": [
+    10.999,
+    13.001
+   ],
+   "equal_count": 12.0,
+   "weakest_more": 0.677,
+   "weakest_equal": 0.296,
+   "weakest_fewer": 0.027,
+   "spearman_mean": -0.9232954545454544,
+   "count_min_max": [
+    7.0,
+    17.0
+   ]
+  },
+  "20": {
+   "count_by_rank": [
+    10.951,
+    13.049
+   ],
+   "equal_count": 12.0,
+   "weakest_more": 0.7025,
+   "weakest_equal": 0.2685,
+   "weakest_fewer": 0.029,
+   "spearman_mean": -0.9207108680792889,
+   "count_min_max": [
+    7.0,
+    17.0
+   ]
+  }
+ }
+}

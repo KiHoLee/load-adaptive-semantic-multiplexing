@@ -64,6 +64,18 @@ Main results (per-user cosine similarity, 2,000 frames per point and user):
   the closed-form load masks at `U = 4` to 6 by up to 0.025 at 0 and 5 dB. Its
   receiver knows the slot gains and its draws differ, so the cause is not
   isolated.
+* Slot counts of the greedy grant (`Code/pca_csi_counts.py`): the grant follows
+  the MSE, not a rate, so it tends to give more slots to weaker users. At 0 dB
+  with offsets of up to 6 dB, the weakest user of a frame receives more than
+  `N/U` slots in 83 to 91 percent of the frames at `U = 2` to 6. At `U = 4` and
+  6 the counts approach `N/U` as the SNR grows.
+* Real-valued overlapping masks with the joint LMMSE receiver
+  (`Code/overlap_bound.py`, Gaussian model): at `U <= 4` every coefficient of
+  the load masks has its own uses, and no overlapping design improves on them.
+  At `U = 6` and 8, a gradient search finds no gain with equal gains and lowers
+  the mean NMSE by at most 2.2 percent with gains spread over +-6 dB, for the
+  strongest users and at the cost of the weakest ones. The search is not
+  convex.
 
 ## Conventions
 
@@ -115,7 +127,9 @@ Main results (per-user cosine similarity, 2,000 frames per point and user):
 | `Code/pca_csi.py` | closed-form channel-aware masks and their references under slot-varying fading (Section IV-E), CPU |
 | `Code/csi_queue.sh`, `Code/csi_extra_queue.sh`, `Code/csi_equal_queue.sh` | every `pca_csi.py` run of the paper and of the supplementary results |
 | `Code/pilot_corr.py`, `Code/corr_queue.sh` | learned references with channel state, one GPU |
-| `data/pilot_corr/` | results of `pca_csi.py` (`pca_csi_*.json`) and of `pilot_corr.py` (`*_s1.json`) |
+| `Code/pca_csi_counts.py` | slot counts of the greedy grant per gain rank, on the draws of `pca_csi.py`, CPU |
+| `Code/overlap_bound.py` | load masks against optimized disjoint and real-valued overlapping masks with the joint LMMSE receiver, Gaussian model, CPU |
+| `data/pilot_corr/` | results of `pca_csi.py` (`pca_csi_*.json`), `pca_csi_counts.py` (`pca_csi_counts_*.json`), and `pilot_corr.py` (`*_s1.json`) |
 | `Code/rev_cache.py` | builds the embedding caches `data/emb_*.pt` (not stored; AG News, SST-2, BERT-base, DistilBERT) |
 | `Code/rev_dyn_numbers.py`, `Code/rev_dynamic_fig.py`, and the other `rev_*` scripts | numbers and figures of the earlier versions, kept with their results |
 | `data/extra/pca_eval.json`, `data/extra/pca_mc.json` | results of the closed-form proposal |
@@ -137,6 +151,8 @@ Main results (per-user cosine similarity, 2,000 frames per point and user):
 | Section IV-E, slot-varying fading (text) | `pilot_corr/pca_csi_U*_k{6,4}_rho*_nf6*.json` | `pca_csi.py`, `pca_numbers.py` (Section 12 of `pca_numbers.md`) |
 | Learned references with channel state | `pilot_corr/*_s1.json` | `pilot_corr.py`, `pca_numbers.py` |
 | Energy division of Overlapping masks | `extra/mask_partition.json` | `mask_partition.py` |
+| Slot counts of the greedy grant | `pilot_corr/pca_csi_counts_U{2,3,4,6}_nf{0,6}.json` | `pca_csi_counts.py --U <U> --nearfar <0 or 6>` |
+| Overlapping masks with the joint LMMSE receiver | `extra/overlap_bound_U{2,4,6,8}_nf{0,6}.json` | `overlap_bound.py --U <U> --nearfar <0 or 6>` |
 | Monte Carlo check | `extra/pca_mc.json` | `pca_mc.py` |
 
 ## Reproduction
