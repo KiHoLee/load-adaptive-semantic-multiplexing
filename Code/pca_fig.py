@@ -29,6 +29,8 @@ plt.rcParams.update({"font.size": 20, "axes.linewidth": 1.2, "lines.markersize":
                      "pdf.fonttype": 42})                     # TrueType, no Type 3 fonts in the PDFs
 FIGSIZE = (7.5, 5.55)
 AX_RECT = [0.155, 0.14, 0.76, 0.7703]
+FIGSIZE_LOAD = (7.5, 4.6)                                    # 2026-11-04: Fig. 3 on a lower canvas, same width and fonts
+AX_RECT_LOAD = [0.155, 0.169, 0.76, 0.723]                   # margins of the 5.55-inch canvas kept in inches
 PROP = dict(color="#ff7f0e", lw=2.2, ls="-", marker="*", zorder=4)
 LEG = 16
 KCOL = {1: "#08306b", 2: "#2171b5", 3: "#41ab5d", 4: "#7f7f7f", 5: "#c994c7", 6: "#ce1256"}
@@ -79,8 +81,8 @@ def fig_snr():
 
 
 def fig_load(snrs=(0, 10, 20)):
-    fig = plt.figure(figsize=FIGSIZE)
-    ax = fig.add_axes(AX_RECT)
+    fig = plt.figure(figsize=FIGSIZE_LOAD)
+    ax = fig.add_axes(AX_RECT_LOAD)
     ax.axvspan(K + 0.5, 6.6, color="0.92", zorder=0)
     scol = {s: c for s, c in zip(snrs, ["#4d4d4d", "#2166ac", "#b2182b"])}
     for s in snrs:

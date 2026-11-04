@@ -387,3 +387,65 @@ Schemes: csiq = Proposed, channel-aware masks (greedy slot counts by the total M
 - prop_fixed: U1 0.917/0.973/0.987; U2 0.885/0.968/0.990; U3 0.847/0.957/0.986; U4 0.823/0.947/0.983; U5 0.804/0.935/0.973; U6 0.788/0.926/0.964; largest minus csiq -0.0044 (U=2, 30 dB)
 - prop_netqpw: U1 0.976/0.996/0.999; U2 0.944/0.991/0.998; U3 0.909/0.969/0.992; U4 0.852/0.913/0.968; U5 0.843/0.902/0.959; U6 0.832/0.900/0.958; largest minus csiq +0.0005 (U=2, 25 dB)
 - csiq without SNR offsets: U1 0.976/0.996/0.998; U2 0.957/0.993/0.998; U3 0.941/0.991/0.998; U4 0.928/0.987/0.997; U5 0.916/0.980/0.991; U6 0.905/0.973/0.984
+
+## 13. Mask support against mask values
+
+A mask is its support (the slots of a user) times its values (the amplitudes). Block fading: the values with P_i proportional to lambda_i (proposal/prop of pca_eval.json) against the allocation (12) (proposal/opt). Slot-varying fading (rho=0.7): fixedb = load masks with equal values on all used entries, fixed = load masks with (12), csiqb = channel-aware support with equal values, csiqw = channel-aware support with (12) at unit gain, csiq = channel-aware masks with (13). The csiq family shares the greedy grant and all draws.
+
+- block fading, (12) minus values proportional to lambda_i over U=1..6, 8 and all SNRs: +0.0003 to +0.0071 (largest at U=1, 5 dB)
+
+### offsets up to +-6 dB: mean per-user CosSim at 0 / 10 / 20 dB
+
+| U | fixedb | fixed | csiqb | csiqw | csiq |
+|---|---|---|---|---|---|
+| 1 | 0.915/0.981/0.995 | 0.927/0.988/0.997 | 0.956/0.990/0.996 | 0.969/0.995/0.998 | 0.970/0.995/0.998 |
+| 2 | 0.871/0.964/0.992 | 0.878/0.974/0.995 | 0.938/0.984/0.996 | 0.949/0.992/0.998 | 0.953/0.992/0.998 |
+| 3 | 0.837/0.947/0.984 | 0.842/0.962/0.993 | 0.921/0.979/0.995 | 0.930/0.988/0.997 | 0.936/0.989/0.997 |
+| 4 | 0.786/0.925/0.980 | 0.786/0.932/0.985 | 0.907/0.973/0.993 | 0.916/0.984/0.996 | 0.922/0.984/0.997 |
+| 5 | 0.765/0.916/0.973 | 0.766/0.922/0.978 | 0.896/0.966/0.987 | 0.904/0.977/0.990 | 0.910/0.977/0.990 |
+| 6 | 0.747/0.906/0.966 | 0.747/0.911/0.971 | 0.885/0.960/0.981 | 0.892/0.970/0.984 | 0.899/0.970/0.984 |
+- support with equal values, csiqb minus fixedb, 0 dB: +0.0416 (U=1, 0 dB) to +0.1379 (U=6, 0 dB)
+- channel-aware masks minus load masks, csiq minus fixed, 0 dB: +0.0428 (U=1, 0 dB) to +0.1515 (U=6, 0 dB)
+- values (13) on the channel-aware support, csiq minus csiqb, 0 dB: +0.0136 (U=1, 0 dB) to +0.0152 (U=3, 0 dB); from 10 dB on: +0.0010 (U=1, 30 dB) to +0.0112 (U=4, 10 dB)
+- gain-aware part of the values, csiq minus csiqw, all SNRs: +0.0000 (U=1, 30 dB) to +0.0070 (U=6, 0 dB)
+- values (12) on the load masks, fixed minus fixedb, all SNRs: +0.0003 (U=6, 0 dB) to +0.0149 (U=3, 10 dB)
+
+### no offsets: mean per-user CosSim at 0 / 10 / 20 dB
+
+| U | fixedb | fixed | csiqb | csiqw | csiq |
+|---|---|---|---|---|---|
+| 1 | 0.923/0.983/0.996 | 0.939/0.991/0.998 | 0.961/0.991/0.997 | 0.974/0.996/0.998 | 0.976/0.996/0.998 |
+| 2 | 0.877/0.968/0.993 | 0.887/0.979/0.996 | 0.941/0.986/0.996 | 0.954/0.993/0.998 | 0.957/0.993/0.998 |
+| 3 | 0.848/0.951/0.986 | 0.856/0.967/0.994 | 0.926/0.981/0.995 | 0.937/0.990/0.998 | 0.941/0.991/0.998 |
+| 4 | 0.795/0.931/0.982 | 0.798/0.939/0.987 | 0.913/0.975/0.993 | 0.923/0.986/0.997 | 0.928/0.987/0.997 |
+| 5 | 0.772/0.922/0.976 | 0.775/0.929/0.981 | 0.901/0.969/0.988 | 0.911/0.980/0.991 | 0.916/0.980/0.991 |
+| 6 | 0.755/0.912/0.969 | 0.757/0.919/0.973 | 0.891/0.963/0.981 | 0.899/0.973/0.984 | 0.905/0.973/0.984 |
+- support with equal values, csiqb minus fixedb, 0 dB: +0.0381 (U=1, 0 dB) to +0.1358 (U=6, 0 dB)
+- channel-aware masks minus load masks, csiq minus fixed, 0 dB: +0.0370 (U=1, 0 dB) to +0.1475 (U=6, 0 dB)
+- values (13) on the channel-aware support, csiq minus csiqb, 0 dB: +0.0141 (U=6, 0 dB) to +0.0159 (U=2, 0 dB); from 10 dB on: +0.0009 (U=1, 30 dB) to +0.0115 (U=4, 10 dB)
+- gain-aware part of the values, csiq minus csiqw, all SNRs: +0.0000 (U=1, 30 dB) to +0.0055 (U=6, 0 dB)
+- values (12) on the load masks, fixed minus fixedb, all SNRs: +0.0010 (U=1, 30 dB) to +0.0164 (U=3, 10 dB)
+
+## 14. Greedy slot grant against a local search over slot counts and positions (rho=0.7, offsets up to +-6 dB)
+
+csiq = greedy grant of the channel-aware masks; csiql = csiq followed by single-slot moves and pairwise swaps between users while the sum MSE under (13) decreases (best move per frame and round). Same draws, placement, allocation, and receiver.
+
+| U | SNR | csiq | csiql | csiql - csiq | weakest csiq / csiql | sum MSE greedy -> search | frames changed | counts changed | rounds |
+|---|---|---|---|---|---|---|---|---|---|
+| 2 | 0 dB | 0.9531 | 0.9533 | +0.0002 | 0.9416 / 0.9418 | 0.17124 -> 0.17071 (-0.31 %) | 0.357 | 0.038 | 3 |
+| 2 | 10 dB | 0.9920 | 0.9920 | +0.0000 | 0.9899 / 0.9900 | 0.02478 -> 0.02467 (-0.47 %) | 0.282 | 0.074 | 4 |
+| 2 | 20 dB | 0.9977 | 0.9977 | +0.0000 | 0.9967 / 0.9967 | 0.00256 -> 0.00254 (-0.63 %) | 0.281 | 0.078 | 3 |
+| 3 | 0 dB | 0.9360 | 0.9365 | +0.0005 | 0.9105 / 0.9106 | 0.34715 -> 0.34491 (-0.65 %) | 0.820 | 0.158 | 7 |
+| 3 | 10 dB | 0.9888 | 0.9890 | +0.0001 | 0.9838 / 0.9841 | 0.05464 -> 0.05391 (-1.33 %) | 0.655 | 0.119 | 6 |
+| 3 | 20 dB | 0.9974 | 0.9974 | +0.0000 | 0.9958 / 0.9959 | 0.00595 -> 0.00584 (-1.77 %) | 0.678 | 0.155 | 7 |
+| 4 | 0 dB | 0.9221 | 0.9228 | +0.0007 | 0.8851 / 0.8847 | 0.56533 -> 0.56051 (-0.85 %) | 0.928 | 0.309 | 9 |
+| 4 | 10 dB | 0.9841 | 0.9846 | +0.0005 | 0.9731 / 0.9739 | 0.10758 -> 0.10452 (-2.85 %) | 0.943 | 0.265 | 8 |
+| 4 | 20 dB | 0.9967 | 0.9968 | +0.0002 | 0.9940 / 0.9944 | 0.01298 -> 0.01188 (-8.44 %) | 0.965 | 0.002 | 8 |
+| 5 | 0 dB | 0.9103 | 0.9112 | +0.0009 | 0.8623 / 0.8618 | 0.81213 -> 0.80359 (-1.05 %) | 0.957 | 0.347 | 10 |
+| 5 | 10 dB | 0.9771 | 0.9777 | +0.0006 | 0.9609 / 0.9631 | 0.19441 -> 0.18943 (-2.56 %) | 0.947 | 0.415 | 11 |
+| 5 | 20 dB | 0.9904 | 0.9905 | +0.0001 | 0.9830 / 0.9836 | 0.06701 -> 0.06595 (-1.58 %) | 0.961 | 0.434 | 10 |
+| 6 | 0 dB | 0.8987 | 0.8999 | +0.0012 | 0.8386 / 0.8385 | 1.09128 -> 1.07878 (-1.15 %) | 0.948 | 0.374 | 12 |
+| 6 | 10 dB | 0.9702 | 0.9711 | +0.0009 | 0.9498 / 0.9524 | 0.30724 -> 0.29757 (-3.15 %) | 0.978 | 0.295 | 11 |
+| 6 | 20 dB | 0.9838 | 0.9841 | +0.0003 | 0.9761 / 0.9769 | 0.14683 -> 0.14389 (-2.00 %) | 0.991 | 0.043 | 12 |
+
+- mean CosSim, search minus greedy: +0.0000 to +0.0012; weakest user: -0.0005 to +0.0026; sum MSE change: -8.44 to -0.31 percent; points: 15

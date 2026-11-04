@@ -25,6 +25,11 @@
 #             (N/k slots chosen by the Hungarian assignment among all free slots), energy d_s/k
 #   odsm      ods with the energy d_s/U of the proposal (the matched-energy reference of the manuscript)
 #   odsfix    Static ODS-k with fixed contiguous parts and no CSI at the transmitter (the classical one)
+# Mask values (2026-11-04): a mask is its slot support times its amplitudes. These modes keep a support and
+# replace the amplitudes, on the same draws and, for the csiq family, the same greedy grant:
+#   fixedb    support of fixed, every used entry at one amplitude (binary mask, P_i ~ lambda_i m_i)
+#   csiqw     support of csiq, amplitudes of the allocation (12) for unit gain (SNR-aware, gain-blind)
+#   csiqb     support of csiq, every used entry at one amplitude (binary mask, P_i ~ lambda_i)
 # Output: ../data/pilot_corr/pca_csi_<tag><suffix>.json.  Usage: python pca_csi.py --U 2 --k 6 --nearfar 6
 # =========================================================
 import argparse, json, math, os
@@ -193,6 +198,7 @@ def greedy_counts(Gs, lam, s2, crit="mse", quotas=None):
 def run(a, lam, V, ct, Ete):
     U, k = a.U, a.k
     res = {}
+    grants = {}                                   # greedy grant per (criterion, snr), shared by the csiq family
     for mode in a.modes:
         if mode in ("ods", "odsm", "odsfix") and (k is None or U > k):
             continue
@@ -206,8 +212,11 @@ def run(a, lam, V, ct, Ete):
             quotas = [math.ceil((S - j) / U) for j in range(U)]
             if mode == "csi":
                 sets = hungarian_sets(util, quotas)
-            elif mode in ("csiq", "csic"):
-                sets = greedy_counts(Gs, lam, s2, "mse" if mode == "csiq" else "cos")
+            elif mode in ("csiq", "csic", "csiqw", "csiqb"):
+                key = ("cos" if mode == "csic" else "mse", snr)
+                if key not in grants:
+                    grants[key] = greedy_counts(Gs, lam, s2, key[0])
+                sets = grants[key]
             elif mode == "csiqe":
                 sets = greedy_counts(Gs, lam, s2, "mse", quotas)
             elif mode in ("ods", "odsm"):
@@ -215,10 +224,14 @@ def run(a, lam, V, ct, Ete):
             cs = []
             for j in range(U):
                 c = ct[pos[:, j]]
-                if mode == "fixed":
+                if mode in ("fixed", "fixedb"):
                     n = quotas[j]; kk = min(n * SEG, D_B)
                     P = np.zeros((a.frames, D_B))
-                    P[:, :kk] = wf(lam[:kk], np.ones((a.frames, kk)), np.full(a.frames, 3072.0 / U), s2)
+                    if mode == "fixed":
+                        P[:, :kk] = wf(lam[:kk], np.ones((a.frames, kk)), np.full(a.frames, 3072.0 / U), s2)
+                    else:
+                        mc = np.array([len([r for r in range(n) if r % NB == i // SEG]) for i in range(kk)], float)
+                        P[:, :kk] = (3072.0 / U) * lam[:kk] * mc / (lam[:kk] * mc).sum()
                     bh = receive_fixed(c, Gt[:, j], j, U, n, P, lam, V, s2, rng, a.genie)
                 elif mode == "odsfix":
                     n = S // k; kk = min(n * SEG, D_B)
@@ -232,8 +245,14 @@ def run(a, lam, V, ct, Ete):
                 else:
                     sl = [sets[f][j] for f in range(a.frames)]
                     n = np.array([len(x) for x in sl])
-                    E = n * SEG if mode in ("csiq", "csic", "csiqe") else (np.full(a.frames, 3072.0 / k) if mode == "ods" else np.full(a.frames, 3072.0 / U))
+                    E = n * SEG if mode in ("csiq", "csic", "csiqe", "csiqw", "csiqb") else (np.full(a.frames, 3072.0 / k) if mode == "ods" else np.full(a.frames, 3072.0 / U))
                     sob, P = place_sorted(Gs[:, j], sl, E, lam, s2)
+                    if mode in ("csiqw", "csiqb"):
+                        sent = np.repeat(sob >= 0, SEG, axis=1)          # (F, D_B) coefficients of the used groups
+                        if mode == "csiqw":
+                            P = wf(lam, np.where(sent, 1.0, 1e-12), E, s2) * sent
+                        else:
+                            P = E[:, None] * lam * sent / (lam * sent).sum(1, keepdims=True)
                     bh = receive_sorted(c, Gt[:, j], sob, P, lam, V, s2, rng, a.genie)
                 b = Ete[pos[:, j]]
                 cs.append((bh * b).sum(1) / (np.linalg.norm(bh, axis=1) * np.linalg.norm(b, axis=1) + 1e-12))

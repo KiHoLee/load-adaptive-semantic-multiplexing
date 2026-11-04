@@ -339,5 +339,57 @@ for f in sorted(glob.glob(os.path.join(PC, "*_s1.json"))):
       + f"; largest minus csiq {best[0]:+.4f} (U={best[1]}, {best[2]} dB)")
 w("- csiq without SNR offsets: " + "; ".join(
     f"U{U} " + "/".join(f"{cval(csi_ld(f'U{U}_k6_rho0.7'), 'csiq', s):.3f}" for s in T3) for U in range(1, 7)))
+# 2026-11-04: mask support against mask values (pca_csi.py modes fixedb, csiqw, csiqb, files *_vals.json)
+w("\n## 13. Mask support against mask values\n")
+w("A mask is its support (the slots of a user) times its values (the amplitudes). Block fading: the values with "
+  "P_i proportional to lambda_i (proposal/prop of pca_eval.json) against the allocation (12) (proposal/opt). "
+  "Slot-varying fading (rho=0.7): fixedb = load masks with equal values on all used entries, fixed = load masks with (12), "
+  "csiqb = channel-aware support with equal values, csiqw = channel-aware support with (12) at unit gain, "
+  "csiq = channel-aware masks with (13). The csiq family shares the greedy grant and all draws.\n")
+_po, _pp = E["proposal"]["opt"], E["proposal"]["prop"]
+_c = lambda x: x["cos"] if isinstance(x, dict) else x
+_d = [(_c(_po[U][s]) - _c(_pp[U][s]), U, s) for U in _po for s in _po[U] if U in _pp]
+w(f"- block fading, (12) minus values proportional to lambda_i over U=1..6, 8 and all SNRs: {min(_d)[0]:+.4f} to {max(_d)[0]:+.4f} "
+  f"(largest at U={max(_d)[1]}, {max(_d)[2]} dB)")
+for _nf, _lab in (("_nf6", "offsets up to +-6 dB"), ("", "no offsets")):
+    _R = {U: csi_ld(f"U{U}_k6_rho0.7{_nf}_vals") for U in range(1, 7)}
+    if not all(_R.values()):
+        continue
+    w(f"\n### {_lab}: mean per-user CosSim at 0 / 10 / 20 dB\n")
+    w("| U | fixedb | fixed | csiqb | csiqw | csiq |")
+    w("|---|---|---|---|---|---|")
+    for U in range(1, 7):
+        w(f"| {U} | " + " | ".join("/".join(f"{cval(_R[U], m, s):.3f}" for s in T3) for m in ("fixedb", "fixed", "csiqb", "csiqw", "csiq")) + " |")
+    def _rg(f, snrs):
+        v = [(f(_R[U], s), U, s) for U in _R for s in snrs]
+        return f"{min(v)[0]:+.4f} (U={min(v)[1]}, {min(v)[2]} dB) to {max(v)[0]:+.4f} (U={max(v)[1]}, {max(v)[2]} dB)"
+    w(f"- support with equal values, csiqb minus fixedb, 0 dB: {_rg(lambda r, s: cval(r, 'csiqb', s) - cval(r, 'fixedb', s), ['0'])}")
+    w(f"- channel-aware masks minus load masks, csiq minus fixed, 0 dB: {_rg(lambda r, s: cval(r, 'csiq', s) - cval(r, 'fixed', s), ['0'])}")
+    w(f"- values (13) on the channel-aware support, csiq minus csiqb, 0 dB: {_rg(lambda r, s: cval(r, 'csiq', s) - cval(r, 'csiqb', s), ['0'])}; "
+      f"from 10 dB on: {_rg(lambda r, s: cval(r, 'csiq', s) - cval(r, 'csiqb', s), [x for x in S if int(x) >= 10])}")
+    w(f"- gain-aware part of the values, csiq minus csiqw, all SNRs: {_rg(lambda r, s: cval(r, 'csiq', s) - cval(r, 'csiqw', s), S)}")
+    w(f"- values (12) on the load masks, fixed minus fixedb, all SNRs: {_rg(lambda r, s: cval(r, 'fixed', s) - cval(r, 'fixedb', s), S)}")
+# 2026-11-04: local search over the slot counts and positions after the greedy grant (Code/pca_csi_ls.py)
+_ls = {}
+for _f in sorted(glob.glob(os.path.join(PC, "pca_csi_ls_U*_nf6*.json"))):
+    _r = json.load(open(_f))
+    for _snr, _v in _r["res"].items():
+        _ls[(_r["args"]["U"], int(_snr))] = _v
+if _ls:
+    w("\n## 14. Greedy slot grant against a local search over slot counts and positions (rho=0.7, offsets up to +-6 dB)\n")
+    w("csiq = greedy grant of the channel-aware masks; csiql = csiq followed by single-slot moves and pairwise swaps between users "
+      "while the sum MSE under (13) decreases (best move per frame and round). Same draws, placement, allocation, and receiver.\n")
+    w("| U | SNR | csiq | csiql | csiql - csiq | weakest csiq / csiql | sum MSE greedy -> search | frames changed | counts changed | rounds |")
+    w("|---|---|---|---|---|---|---|---|---|---|")
+    for (_U, _s) in sorted(_ls):
+        _g, _l = _ls[(_U, _s)]["csiq"], _ls[(_U, _s)]["csiql"]
+        w(f"| {_U} | {_s} dB | {_g['cos']:.4f} | {_l['cos']:.4f} | {_l['cos'] - _g['cos']:+.4f} | {_g['weakest']:.4f} / {_l['weakest']:.4f} | "
+          f"{_l['mse_greedy']:.5f} -> {_l['mse_search']:.5f} ({(_l['mse_search'] / _l['mse_greedy'] - 1) * 100:+.2f} %) | "
+          f"{_l['frames_changed']:.3f} | {_l['counts_changed']:.3f} | {_l['rounds']} |")
+    _dc = [(_ls[k]["csiql"]["cos"] - _ls[k]["csiq"]["cos"], k) for k in _ls]
+    _dw = [(_ls[k]["csiql"]["weakest"] - _ls[k]["csiq"]["weakest"], k) for k in _ls]
+    _dm = [((_ls[k]["csiql"]["mse_search"] / _ls[k]["csiql"]["mse_greedy"] - 1) * 100, k) for k in _ls]
+    w(f"\n- mean CosSim, search minus greedy: {min(_dc)[0]:+.4f} to {max(_dc)[0]:+.4f}; weakest user: {min(_dw)[0]:+.4f} to {max(_dw)[0]:+.4f}; "
+      f"sum MSE change: {min(_dm)[0]:+.2f} to {max(_dm)[0]:+.2f} percent; points: {len(_ls)}")
 open(os.path.join(D, "pca_numbers.md"), "w").write("\n".join(out) + "\n")
 print("\n".join(out))

@@ -1,0 +1,36 @@
+{
+ "args": {
+  "U": 2,
+  "rho": 0.7,
+  "nearfar": 6.0,
+  "delay": 1.0,
+  "frames": 2000,
+  "snrs": [
+   0
+  ],
+  "maxit": 20
+ },
+ "res": {
+  "0": {
+   "csiq": {
+    "cos": 0.953117653018436,
+    "weakest": 0.9416376520189447
+   },
+   "csiql": {
+    "cos": 0.9532676610429021,
+    "weakest": 0.9417849861644115,
+    "mse_greedy": 0.17123554063198412,
+    "mse_search": 0.1707091583804737,
+    "frames_changed": 0.3575,
+    "rounds": 3,
+    "improved_per_round": [
+     715,
+     95,
+     13,
+     0
+    ],
+    "counts_changed": 0.0385
+   }
+  }
+ }
+}

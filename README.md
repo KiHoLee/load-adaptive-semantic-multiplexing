@@ -17,10 +17,15 @@ The receiver announces the SNR, the load, and a rank for each active user.
   decreasing order) and repeats the 768 coefficients cyclically over the block.
   Leading coefficients carry the largest variance, so the code can be cut at
   any length.
-* **Dynamic masks.** At load `U` the user of rank `j` owns the slots `s` with
-  `s mod U = j` and sends its leading segments there. A user sends all
-  coefficients, with repetitions, at light load and fewer coefficients under
-  overload.
+* **Dynamic masks.** Each mask is a real-valued vector. Its support, the slots
+  `s` with `s mod U = j` of the user of rank `j` at load `U`, assigns the
+  channel uses, and its values, the amplitudes of the power allocation below,
+  set the power. A user sends all coefficients, with repetitions, at light load
+  and fewer coefficients under overload. Under block fading, for users with
+  independent content and a linear receiver (successive interference
+  cancellation with linear estimates included), no overlapping mask lowers the
+  MSE at equal energy per coefficient up to the full load `U = K`, because the
+  disjoint supports give every coefficient its own uses (Section III).
 * **Closed-form power and receiver.** Coefficient `i` receives the power
   `P_i = max(0, sqrt(lambda_i s2 / nu) - s2)` with `sum P_i = d_s/U` at the
   announced noise variance `s2` (classical optimal linear coding,
@@ -69,6 +74,17 @@ Main results (per-user cosine similarity, 2,000 frames per point and user):
   with offsets of up to 6 dB, the weakest user of a frame receives more than
   `N/U` slots in 83 to 91 percent of the frames at `U = 2` to 6. At `U = 4` and
   6 the counts approach `N/U` as the SNR grows.
+* Mask support against mask values (`Code/pca_csi.py` modes `fixedb`, `csiqw`,
+  `csiqb`, files `*_vals.json`, Section 13 of `data/pca_numbers.md`): under
+  block fading, values that ignore the SNR cost at most 0.007. Under
+  slot-varying fading at 0 dB, the channel-aware supports with equal values
+  gain 0.042 to 0.138 over the load masks with equal values, and on these
+  supports the values (13) add 0.014 to 0.015.
+* Slot positions of the greedy grant (`Code/pca_csi_ls.py`, files
+  `pca_csi_ls_*.json`, Section 14 of `data/pca_numbers.md`): a local search
+  that moves and swaps slots between users after the grant lowers the sum MSE
+  by 0.3 to 8.4 percent but raises the mean CosSim by at most 0.0012 at
+  `U = 2` to 6 and 0, 10, and 20 dB. It is a local optimum, not a bound.
 * Real-valued overlapping masks with the joint LMMSE receiver
   (`Code/overlap_bound.py`, Gaussian model): at `U <= 4` every coefficient of
   the load masks has its own uses, and no overlapping design improves on them.
@@ -103,13 +119,15 @@ Main results (per-user cosine similarity, 2,000 frames per point and user):
 | Static ODS-`k` | `static` in `pca_eval.json` | the same code on `k` fixed parts of `d_s/k` uses, energy `d_s/k`, parts of absent users silent |
 | Static ODS-`k` with energy `d_s/U` | `matched` in `pca_eval.json` | a Static ODS-`k` user increases its power on its part to spend `d_s/U` |
 | Learned ODS-`k` | `ortho_U<k>` | learned linear projection, LN, and linear decoder per part, SNR-aware MAML, one model per `k` |
-| Learned nested code | `shared_dyns`, evaluated as `shared_dyns_clamp`; `shared_dyns_pcainit` | one learned transceiver with the same dynamic masks and an SNR-dependent profile; also started from the PCA basis (`rev_run.py --init pca`) |
+| Learned nested code | `shared_dyns`, evaluated as `shared_dyns_clamp`; `shared_dyns_pcainit` | one learned transceiver with the supports of the dynamic masks and learned SNR-dependent mask values; also started from the PCA basis (`rev_run.py --init pca`) |
 | Overlapping masks | `shared_agn` | learned overlapping masks and user-wise attention of the original submission, one model for all loads |
 | ToDMA, best `T` | `extra/todma_redim.json` | single-antenna adaptation: first `T` BERT tokens over `T` slots of `3072/T` uses, OMP detection, genie token count per slot and user association |
 | Channel-aware masks | `csiq` in `data/pilot_corr/pca_csi_*.json` | ordered groups on the strongest slots, power (13), greedy slot grant at `d_s/N` per slot, blind per-slot gain estimate |
 | Load masks under slot-varying fading | `fixed` in `pca_csi_*.json` | the proposal with the masks (4), no channel state at the transmitter |
 | Static ODS-`k` with known gains | `ods` (energy `d_s/k`), `odsm` (energy `d_s/U`, files `_x`) | `N/k` slots per user by the assignment maximizing the sum of `log(1 + gamma g^2)`, power (13) |
 | Controls of Section IV-E | `csi` (slot counts of the load masks), `csiqe` (counts capped at the load masks, files `_e`), `odsfix` (fixed contiguous parts) | separate placement, slot counts, and channel state |
+| Supports and values | `fixedb`, `csiqb` (equal values on all used entries), `csiqw` (values (12) on the channel-aware supports), files `_vals` | separate the supports of the masks from their values |
+| Local search over slot positions | `csiql` in `pca_csi_ls_*.json` | the greedy grant followed by single-slot moves and pairwise swaps while the sum MSE under (13) decreases |
 | Learned references with channel state | `data/pilot_corr/{prop,ods<k>}_<mode>[_nf6]_s1.json` | single runs (seed 1) of the learned nested code and Learned ODS-`k` with the placements `fixed`, `block`, `csisort`, `netq`, `netpw`, `netqpw` (mask network with slot counts and per-slot weights) |
 
 ## Layout
@@ -128,8 +146,10 @@ Main results (per-user cosine similarity, 2,000 frames per point and user):
 | `Code/csi_queue.sh`, `Code/csi_extra_queue.sh`, `Code/csi_equal_queue.sh` | every `pca_csi.py` run of the paper and of the supplementary results |
 | `Code/pilot_corr.py`, `Code/corr_queue.sh` | learned references with channel state, one GPU |
 | `Code/pca_csi_counts.py` | slot counts of the greedy grant per gain rank, on the draws of `pca_csi.py`, CPU |
+| `Code/csi_vals_queue.sh` | the `pca_csi.py` runs that separate the supports of the masks from their values |
+| `Code/pca_csi_ls.py`, `Code/csi_ls_queue.sh` | local search over the slot counts and positions after the greedy grant, on the draws of `pca_csi.py`, CPU |
 | `Code/overlap_bound.py` | load masks against optimized disjoint and real-valued overlapping masks with the joint LMMSE receiver, Gaussian model, CPU |
-| `data/pilot_corr/` | results of `pca_csi.py` (`pca_csi_*.json`), `pca_csi_counts.py` (`pca_csi_counts_*.json`), and `pilot_corr.py` (`*_s1.json`) |
+| `data/pilot_corr/` | results of `pca_csi.py` (`pca_csi_*.json`), `pca_csi_counts.py` (`pca_csi_counts_*.json`), `pca_csi_ls.py` (`pca_csi_ls_*.json`), and `pilot_corr.py` (`*_s1.json`) |
 | `Code/rev_cache.py` | builds the embedding caches `data/emb_*.pt` (not stored; AG News, SST-2, BERT-base, DistilBERT) |
 | `Code/rev_dyn_numbers.py`, `Code/rev_dynamic_fig.py`, and the other `rev_*` scripts | numbers and figures of the earlier versions, kept with their results |
 | `data/extra/pca_eval.json`, `data/extra/pca_mc.json` | results of the closed-form proposal |
@@ -142,7 +162,7 @@ Main results (per-user cosine similarity, 2,000 frames per point and user):
 
 | Item | Data | Script |
 |---|---|---|
-| Fig. 1 | transceiver diagram (TikZ) | none |
+| Fig. 1 | transceiver diagram (TikZ): the real-valued mask and the support of the dynamic mask at two loads | none |
 | Fig. 2, per-user CosSim versus SNR | `pca_eval.json` (proposal), `ortho_U{1..6}_s{1,2,3}` | `pca_fig.py` |
 | Fig. 3, per-user CosSim versus load | `pca_eval.json` (proposal, static) | `pca_fig.py` |
 | Supplementary `S(U)` figure | `pca_eval.json` | `pca_fig.py` |
@@ -152,6 +172,8 @@ Main results (per-user cosine similarity, 2,000 frames per point and user):
 | Learned references with channel state | `pilot_corr/*_s1.json` | `pilot_corr.py`, `pca_numbers.py` |
 | Energy division of Overlapping masks | `extra/mask_partition.json` | `mask_partition.py` |
 | Slot counts of the greedy grant | `pilot_corr/pca_csi_counts_U{2,3,4,6}_nf{0,6}.json` | `pca_csi_counts.py --U <U> --nearfar <0 or 6>` |
+| Section IV-E, supports against values | `pilot_corr/pca_csi_U{1..6}_k6_rho0.7[_nf6]_vals.json` | `csi_vals_queue.sh`, `pca_numbers.py` (Section 13) |
+| Section IV-E, local search over slot positions | `pilot_corr/pca_csi_ls_U{2..6}_nf6_{0,10,20}.json` | `csi_ls_queue.sh`, `pca_numbers.py` (Section 14) |
 | Overlapping masks with the joint LMMSE receiver | `extra/overlap_bound_U{2,4,6,8}_nf{0,6}.json` | `overlap_bound.py --U <U> --nearfar <0 or 6>` |
 | Monte Carlo check | `extra/pca_mc.json` | `pca_mc.py` |
 
