@@ -228,8 +228,8 @@ Participation ratio of the PCA spectrum of the training embeddings: 61.9 of 768
 
 ## 12. Channel-aware masks under time-correlated fading (Code/pca_csi.py)
 
-AR(1) complex Gaussian gain per user over the 24 slots (rho between adjacent slots), independent across users, near-far offset uniform in [-6, 6] dB per user and frame where marked nf6; the scheduler knows the slot gains (perfect, or delayed with correlation rho_b); blind per-slot gain estimate; 2,000 frames per user, draws shared by all schemes of a scenario (seed 123 + SNR). Files without the suffix _x hold fixed, csi, csiq, ods, odsfix; files with _x hold odsm (and csic), files with _e hold csiqe.
-Schemes: csiq = Proposed, channel-aware masks (greedy slot counts by the total MSE, energy 128 per granted slot); csi = channel-aware placement with the slot counts of the load masks (energy d_s/U); fixed = Proposed with the load masks (4), no CSI at the transmitter; ods = Static ODS-k with known gains (the same slot gains as the proposal, not its grant: N/k slots per user by the Hungarian assignment on log(1 + gamma g^2), energy d_s/k); odsm = the same with energy d_s/U; odsfix = Static ODS-k with fixed contiguous parts, no CSI; csiqe = csiq with every count capped at that of the load masks (equal counts at U=6, greedy placement only); weakest = mean over frames of the smallest per-user CosSim of the frame.
+AR(1) complex Gaussian gain per user over the 24 slots (rho between adjacent slots), independent across users, near-far offset uniform in [-6, 6] dB per user and frame where marked nf6; the receiver knows the slot gains (perfect, or delayed with correlation rho_b); blind per-slot gain estimate; 2,000 frames per user, draws shared by all schemes of a scenario (seed 123 + SNR). Files without the suffix _x hold fixed, csi, csiq, ods, odsfix; files with _x hold odsm (and csic), files with _e hold csiqe.
+Schemes: csiq = Proposed, channel-aware masks (greedy slot counts by the total MSE, energy 128 per slot of the support); csi = channel-aware placement with the slot counts of the load masks (energy d_s/U); fixed = Proposed with the load masks (4), no CSI at the transmitter; ods = Static ODS-k with known gains (the same slot gains as the proposal, not its supports: N/k slots per user by the Hungarian assignment on log(1 + gamma g^2), energy d_s/k); odsm = the same with energy d_s/U; odsfix = Static ODS-k with fixed contiguous parts, no CSI; csiqe = csiq with every count capped at that of the load masks (equal counts at U=6, greedy placement only); weakest = mean over frames of the smallest per-user CosSim of the frame.
 
 
 ### rho0.7_nf6, Static ODS-6 (0, 10, 20 dB; mean, then weakest in parentheses)
@@ -310,7 +310,7 @@ Schemes: csiq = Proposed, channel-aware masks (greedy slot counts by the total M
 - csiq minus Static ODS-4 with known gains (odsm), U=3: +0.000 to +0.002 (0 dB +0.002)
 - csiq minus Static ODS-4 with known gains (ods), U=4: -0.000 to +0.003 (0 dB +0.003)
 
-### Delayed CSI at the scheduler (rho0.7_nf6, mean at 0 / 10 / 20 dB)
+### Delayed CSI (rho0.7_nf6, mean at 0 / 10 / 20 dB)
 
 | rho_b | U | fixed | csi | csiq | ods | odsm |
 |---|---|---|---|---|---|---|
@@ -388,9 +388,24 @@ Schemes: csiq = Proposed, channel-aware masks (greedy slot counts by the total M
 - prop_netqpw: U1 0.976/0.996/0.999; U2 0.944/0.991/0.998; U3 0.909/0.969/0.992; U4 0.852/0.913/0.968; U5 0.843/0.902/0.959; U6 0.832/0.900/0.958; largest minus csiq +0.0005 (U=2, 25 dB)
 - csiq without SNR offsets: U1 0.976/0.996/0.998; U2 0.957/0.993/0.998; U3 0.941/0.991/0.998; U4 0.928/0.987/0.997; U5 0.916/0.980/0.991; U6 0.905/0.973/0.984
 
+### Subband counts of the weakest user (Code/pca_csi_counts.py, rho=0.7, 0 / 10 / 20 dB)
+
+Share of frames in which the weakest user of a frame (lowest mean slot gain) holds more than, as many as, or fewer than N/U slots under the greedy supports of csiq; spearman = mean rank correlation of count and gain.
+
+| offsets | U | N/U | more | equal | fewer | spearman |
+|---|---|---|---|---|---|---|
+| up to +-6 dB | 2 | 12 | 0.827/0.882/0.879 | 0.151/0.106/0.111 | 0.021/0.011/0.009 | -0.949/-0.974/-0.979 |
+| up to +-6 dB | 3 | 8 | 0.900/0.949/0.958 | 0.098/0.050/0.043 | 0.002/0.002/0.000 | -0.893/-0.918/-0.916 |
+| up to +-6 dB | 4 | 6 | 0.911/0.450/0.002 | 0.086/0.548/0.999 | 0.003/0.002/0.000 | -0.866/-0.670/-0.422 |
+| up to +-6 dB | 6 | 4 | 0.854/0.132/0.003 | 0.144/0.814/0.969 | 0.002/0.054/0.028 | -0.802/-0.030/0.412 |
+| none | 2 | 12 | 0.591/0.677/0.703 | 0.359/0.296/0.269 | 0.050/0.027/0.029 | -0.844/-0.923/-0.921 |
+| none | 3 | 8 | 0.590/0.762/0.762 | 0.383/0.234/0.235 | 0.027/0.004/0.003 | -0.736/-0.861/-0.865 |
+| none | 4 | 6 | 0.524/0.126/0.000 | 0.458/0.873/1.000 | 0.018/0.002/0.000 | -0.672/-0.593/nan |
+| none | 6 | 4 | 0.422/0.048/0.002 | 0.573/0.870/0.988 | 0.005/0.083/0.010 | -0.602/0.115/0.291 |
+
 ## 13. Mask support against mask values
 
-A mask is its support (the slots of a user) times its values (the amplitudes). Block fading: the values with P_i proportional to lambda_i (proposal/prop of pca_eval.json) against the allocation (12) (proposal/opt). Slot-varying fading (rho=0.7): fixedb = load masks with equal values on all used entries, fixed = load masks with (12), csiqb = channel-aware support with equal values, csiqw = channel-aware support with (12) at unit gain, csiq = channel-aware masks with (13). The csiq family shares the greedy grant and all draws.
+A mask is its support (the slots of a user) times its values (the amplitudes). Block fading: the values with P_i proportional to lambda_i (proposal/prop of pca_eval.json) against the allocation (12) (proposal/opt). Slot-varying fading (rho=0.7): fixedb = load masks with equal values on all used entries, fixed = load masks with (12), csiqb = channel-aware support with equal values, csiqw = channel-aware support with (12) at unit gain, csiq = channel-aware masks with (13). The csiq family shares the greedy supports and all draws.
 
 - block fading, (12) minus values proportional to lambda_i over U=1..6, 8 and all SNRs: +0.0003 to +0.0071 (largest at U=1, 5 dB)
 
@@ -426,9 +441,9 @@ A mask is its support (the slots of a user) times its values (the amplitudes). B
 - gain-aware part of the values, csiq minus csiqw, all SNRs: +0.0000 (U=1, 30 dB) to +0.0055 (U=6, 0 dB)
 - values (12) on the load masks, fixed minus fixedb, all SNRs: +0.0010 (U=1, 30 dB) to +0.0164 (U=3, 10 dB)
 
-## 14. Greedy slot grant against a local search over slot counts and positions (rho=0.7, offsets up to +-6 dB)
+## 14. Greedy supports against a local search over slot counts and positions (rho=0.7, offsets up to +-6 dB)
 
-csiq = greedy grant of the channel-aware masks; csiql = csiq followed by single-slot moves and pairwise swaps between users while the sum MSE under (13) decreases (best move per frame and round). Same draws, placement, allocation, and receiver.
+csiq = greedy supports of the channel-aware masks; csiql = csiq followed by single-slot moves and pairwise swaps between users while the sum MSE under (13) decreases (best move per frame and round). Same draws, placement, allocation, and receiver.
 
 | U | SNR | csiq | csiql | csiql - csiq | weakest csiq / csiql | sum MSE greedy -> search | frames changed | counts changed | rounds |
 |---|---|---|---|---|---|---|---|---|---|

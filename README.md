@@ -1,234 +1,362 @@
 # Load-Adaptive Semantic Multiplexing via Nested Principal-Component Codes and Dynamic Masks
 
-Code, stored results, and trained reference models for the IEEE Communications
-Letters paper by Ki-Ho Lee, Hyun-Ho Choi, and Jung-Ryun Lee (under review).
-Every figure and every number of the paper and of its supplementary results can
-be regenerated from this repository.
+Ki-Ho Lee, Hyun-Ho Choi, and Jung-Ryun Lee
 
-## What the letter studies
+Status: under review at IEEE Communications Letters.
 
-`U` distributed users send sentences over one block of `d_s = K * d_b` real
-channel uses (`d_b = 768`, `K = 4`, `d_s = 3072`, 24 slots of 128 uses), and the
-load `U` changes from frame to frame between 1 and 6 (8 in a generality check).
-The receiver announces the SNR, the load, and a rank for each active user.
+This repository holds the seeded scripts, the stored results, the trained reference
+models, and the run configurations of the paper. The scripts in the map below print
+every figure, table, and number of the manuscript and of its response letter from the
+stored results alone. No training, simulation, network access, or GPU is needed for that.
 
-* **Nested code.** Each user projects its centered BERT sentence embedding on
-  the principal components of the training embeddings (PCA, eigenvalues in
-  decreasing order) and repeats the 768 coefficients cyclically over the block.
-  Leading coefficients carry the largest variance, so the code can be cut at
-  any length.
-* **Dynamic masks.** Each mask is a real-valued vector. Its support, the slots
-  `s` with `s mod U = j` of the user of rank `j` at load `U`, assigns the
-  channel uses, and its values, the amplitudes of the power allocation below,
-  set the power. A user sends all coefficients, with repetitions, at light load
-  and fewer coefficients under overload. Under block fading, for users with
-  independent content and a linear receiver (successive interference
-  cancellation with linear estimates included), no overlapping mask lowers the
-  MSE at equal energy per coefficient up to the full load `U = K`, because the
-  disjoint supports give every coefficient its own uses (Section III).
-* **Closed-form power and receiver.** Coefficient `i` receives the power
-  `P_i = max(0, sqrt(lambda_i s2 / nu) - s2)` with `sum P_i = d_s/U` at the
-  announced noise variance `s2` (classical optimal linear coding,
-  K.-H. Lee and D. P. Petersen, IEEE Trans. Commun., 1976). The receiver
-  estimates the gain blindly from the received energy and applies the Wiener
-  factor per coefficient. Nothing is trained.
-* **Channel-aware masks (Section IV-E).** When the gain varies over the slots,
-  as over subbands, and the receiver knows it, every used slot carries one group
-  of 128 coefficients. The groups of a user occupy its slots in decreasing order
-  of gain, and coefficient `i` on a slot of gain `g_i` receives
-  `P_i = max(0, sqrt(lambda_i s2 / nu) / g_i - s2 / g_i^2)` (the same classical
-  result). After a first slot for every user, the receiver grants each further
-  slot greedily to the user whose MSE decreases most, at the energy `d_s/N` per
-  slot, so the slot count and the energy of a user follow its channel. The
-  greedy grant is a heuristic and is not shown to be optimal.
+## What the paper studies
 
-Main results (per-user cosine similarity, 2,000 frames per point and user):
+`U` users send sentence embeddings to one receiver over a block of `d_s` real channel
+uses, and the load `U` changes from frame to frame. Real-valued masks are the general
+description of how the users share the block. A mask weights every channel use of a
+user, and the masks of two users may overlap. The best masks differ with the condition
+of the frame, namely the load, the SNR, the subband gains and their age, and the content
+the users share. Learned masks would need one model per condition. For a nested
+principal-component code and a linear receiver of least MSE, the paper gives the masks
+in closed form per condition.
 
-* The proposal exceeds the learned partition of every load (Learned ODS-`U`,
-  three-seed means) by 0.006 to 0.047, and a learned nested code with the same
-  masks by 0.006 to 0.022.
-* At its design load, a fixed partition with the same code (Static ODS-`k`)
-  equals the proposal. At light load the proposal exceeds Static ODS-6 by up to
-  0.137 and Static ODS-4 by up to 0.101, through the energy and, for short
-  parts, the channel uses of absent users.
-* Re-dimensioned ToDMA leads by at most 0.003 at four of 28 points. The masks
-  need the announced active set.
-* Under slot-varying fading with offsets of up to 6 dB, the channel-aware masks
-  exceed the load masks at 0 dB by 0.043 (`U = 1`) to 0.151 (`U = 6`), and by
-  up to 0.346 for the weakest user of a frame. At `U = 6`, Static ODS-6 with
-  the same known gains lies within 0.003 in the mean. The channel-aware masks
-  lead it by 0.028 for the weakest user at 0 dB, 0.018 of it from the slot
-  counts and the energy that follows them. Below six users, the variants of
-  Static ODS-4 and ODS-6 with known gains and the energy `d_s/U` lie within
-  0.002 (`U <= 3`) and trail by 0.002 to 0.013, respectively. A user of the
-  channel-aware masks spends `n * d_s/N` for its `n` granted slots, which
-  concentrates the energy on fewer uses, with no peak-power limit.
-* Learned transceivers with channel state (single runs, `Code/pilot_corr.py`)
-  trail the channel-aware masks or tie them within 0.001, with leads of at most
-  0.0006. With the load masks, the learned nested code of these runs exceeds
-  the closed-form load masks at `U = 4` to 6 by up to 0.025 at 0 and 5 dB. Its
-  receiver knows the slot gains and its draws differ, so the cause is not
-  isolated.
-* Slot counts of the greedy grant (`Code/pca_csi_counts.py`): the grant follows
-  the MSE, not a rate, so it tends to give more slots to weaker users. At 0 dB
-  with offsets of up to 6 dB, the weakest user of a frame receives more than
-  `N/U` slots in 83 to 91 percent of the frames at `U = 2` to 6. At `U = 4` and
-  6 the counts approach `N/U` as the SNR grows.
-* Mask support against mask values (`Code/pca_csi.py` modes `fixedb`, `csiqw`,
-  `csiqb`, files `*_vals.json`, Section 13 of `data/pca_numbers.md`): under
-  block fading, values that ignore the SNR cost at most 0.007. Under
-  slot-varying fading at 0 dB, the channel-aware supports with equal values
-  gain 0.042 to 0.138 over the load masks with equal values, and on these
-  supports the values (13) add 0.014 to 0.015.
-* Slot positions of the greedy grant (`Code/pca_csi_ls.py`, files
-  `pca_csi_ls_*.json`, Section 14 of `data/pca_numbers.md`): a local search
-  that moves and swaps slots between users after the grant lowers the sum MSE
-  by 0.3 to 8.4 percent but raises the mean CosSim by at most 0.0012 at
-  `U = 2` to 6 and 0, 10, and 20 dB. It is a local optimum, not a bound.
-* Real-valued overlapping masks with the joint LMMSE receiver
-  (`Code/overlap_bound.py`, Gaussian model): at `U <= 4` every coefficient of
-  the load masks has its own uses, and no overlapping design improves on them.
-  At `U = 6` and 8, a gradient search finds no gain with equal gains and lowers
-  the mean NMSE by at most 2.2 percent with gains spread over +-6 dB, for the
-  strongest users and at the cost of the weakest ones. The search is not
-  convex.
+* **Nested code.** Each user projects its centered BERT embedding (1) on the principal
+  components of the training embeddings (2) and repeats the coefficients `K` times (3).
+  The leading coefficients carry the most variance, so the code can be cut at any length.
+* **One mask design.** The masks (4) of a frame solve the design (P), the least MSE of
+  the joint LMMSE receiver (9) at the energy of each user.
+* **Load masks (5).** They are one member of (4). Their supports do not overlap and
+  cover the block. For independent content under block fading with known gains, the
+  optimum of (P) up to the full load `U = K` needs no overlap, and the load masks with the
+  allocation (16) attain it when every squared gain equals its mean. Proposed applies them
+  with the blind gain estimate (11) and the Wiener estimate (12). Below full load the
+  active users take over the uses and the energy of the absent ones. In overload every
+  user keeps the leading part of its code.
+* **Channel-aware masks (19).** With fresh subband gains, each mask orders the groups of
+  the code by the gain of the subband. The coherence-aware choice compares them with the
+  load masks over draws of the aged gains (7) and announces the masks of lower MSE.
+* **Overlapping masks (18).** For users who describe one scene, the masks overlap
+  wherever a coefficient has shared content, and they send the shared part together.
+  The joint LMMSE receiver weighs each signal by the shared content. It is a linear form
+  of user-wise attention, and real-valued masks are the means for learned attention to
+  handle inter-user interference.
 
-## Conventions
+## System and energy conventions
 
-* Power: every user transmits at unit average power over the channel uses it
-  occupies (energy `d_s/U`; at `U = 5` ranks 0 to 3 have 640 uses at average
-  power 0.96 and rank 4 has 512 uses at 1.2). A Static ODS-`k` user spends
-  `d_s/k`. Transmission is analog without a peak-power constraint.
-* Channel: each user has its own Rayleigh coefficient `h_u ~ CN(0,1)`, constant
-  within a block, with the phase pre-compensated at the transmitter, and the
-  noise variance is `1/SNR` per real use. Section IV-E replaces it by
-  slot-varying fading: per user `h_{u,s} = 0.7 h_{u,s-1} + sqrt(0.51) w_{u,s}`
-  over the 24 slots, independent across users, with an offset uniform within
-  +-6 dB per user and frame (tag `nf6`). The receiver knows the slot gains, or
-  those of the previous block with correlation `eta` (`--delay`), and every
-  user pre-compensates all slot phases.
-* Metric: per-user CosSim between the centered BERT embedding and its estimate.
-  The aggregate fidelity `S(U)` is compared only between schemes that serve the
-  same `U` users.
+* Block: `d_b = 768`, `K = 4`, `d_s = K d_b = 3072` real uses, `N = 24` subbands (slots)
+  of `L = d_s/N = 128` uses. Light load is `U < K`, full load `U = K`, and overload `U > K`.
+* Energy: user `u` spends `E_u = d_s/U` per block unless stated. Static ODS-`k` spends
+  `d_s/k`, or `d_s/U` in its variant. There is no peak-power constraint.
+* Channel (6): `g_{u,s} = beta_u |h_{u,s}|`, noise variance `1/SNR` per real use. The
+  fading vector `h_u = [h_{u,0}, ..., h_{u,N-1}]` is `CN(0, R_F)` with
+  `[R_F]_{ss'} = rho_f^{|s-s'|}`, independent across users. It ages over frames by (7)
+  with the gain correlation `eta`. Every user pre-compensates the phase of each subband.
+* Block fading is `rho_f = 1`, one gain per user and block. Section IV uses it with
+  `beta_u = 1` and `eta = 0`, which is Rayleigh fading independent across users and
+  frames, unless subband gains are stated.
+* Near-far offsets: with subband gains, `20 log10 beta_u` is uniform within +-6 dB per
+  user and frame (file tag `_nf6` in `data/pilot_corr/` and in
+  `data/extra/overlap_bound2_*_nf6.json`). The near-far tests under block fading use
+  fixed offsets spread evenly over +-6 dB, at `U = 4` the offsets -6, -2, 2, and 6 dB.
+  These are the +-6 dB test of Section IV-B, its rows in Table R1.4 of the response
+  letter, and `data/extra/overlap_bound_U*_nf6.json`.
+* Metric: the per-user CosSim between the centered embedding and its estimate. The
+  results for one scene report the NMSE with paired bootstrap 95 percent confidence
+  intervals.
+* Protocol: AG News gives 8,000 training and 2,000 test sentences, encoded by BERT-base
+  (uncased). Every point evaluates 2,000 test frames per user at 0 to 30 dB in 5 dB steps.
+  For one scene, the users of a frame send different COCO captions of one of 2,000 test
+  images, with the statistics fitted on 8,000 training images.
 
-## Schemes
+## Schemes and labels in the result files
 
-| Name in the paper | Source | Description |
-|---|---|---|
-| Proposed | `Code/pca_eval.py`, `proposal/opt` in `data/extra/pca_eval.json` | PCA nested code, dynamic masks, closed-form power, blind-gain Wiener receiver |
-| Static ODS-`k` | `static` in `pca_eval.json` | the same code on `k` fixed parts of `d_s/k` uses, energy `d_s/k`, parts of absent users silent |
-| Static ODS-`k` with energy `d_s/U` | `matched` in `pca_eval.json` | a Static ODS-`k` user increases its power on its part to spend `d_s/U` |
-| Learned ODS-`k` | `ortho_U<k>` | learned linear projection, LN, and linear decoder per part, SNR-aware MAML, one model per `k` |
-| Learned nested code | `shared_dyns`, evaluated as `shared_dyns_clamp`; `shared_dyns_pcainit` | one learned transceiver with the supports of the dynamic masks and learned SNR-dependent mask values; also started from the PCA basis (`rev_run.py --init pca`) |
-| Overlapping masks | `shared_agn` | learned overlapping masks and user-wise attention of the original submission, one model for all loads |
-| ToDMA, best `T` | `extra/todma_redim.json` | single-antenna adaptation: first `T` BERT tokens over `T` slots of `3072/T` uses, OMP detection, genie token count per slot and user association |
-| Channel-aware masks | `csiq` in `data/pilot_corr/pca_csi_*.json` | ordered groups on the strongest slots, power (13), greedy slot grant at `d_s/N` per slot, blind per-slot gain estimate |
-| Load masks under slot-varying fading | `fixed` in `pca_csi_*.json` | the proposal with the masks (4), no channel state at the transmitter |
-| Static ODS-`k` with known gains | `ods` (energy `d_s/k`), `odsm` (energy `d_s/U`, files `_x`) | `N/k` slots per user by the assignment maximizing the sum of `log(1 + gamma g^2)`, power (13) |
-| Controls of Section IV-E | `csi` (slot counts of the load masks), `csiqe` (counts capped at the load masks, files `_e`), `odsfix` (fixed contiguous parts) | separate placement, slot counts, and channel state |
-| Supports and values | `fixedb`, `csiqb` (equal values on all used entries), `csiqw` (values (12) on the channel-aware supports), files `_vals` | separate the supports of the masks from their values |
-| Local search over slot positions | `csiql` in `pca_csi_ls_*.json` | the greedy grant followed by single-slot moves and pairwise swaps while the sum MSE under (13) decreases |
-| Learned references with channel state | `data/pilot_corr/{prop,ods<k>}_<mode>[_nf6]_s1.json` | single runs (seed 1) of the learned nested code and Learned ODS-`k` with the placements `fixed`, `block`, `csisort`, `netq`, `netpw`, `netqpw` (mask network with slot counts and per-slot weights) |
+Some result files and number files predate the names of the manuscript. The response
+letter lists this mapping, and the table repeats it. `data/general_numbers.md` and
+`data/pca_numbers.md` number the allocations (16) and (19) as (12) and (13), and
+`data/pca_numbers.md` numbers the load masks (5) as (4). Section 11 of
+`data/pca_numbers.md` checks (10), (14), and (16) under the numbers (7), (10), and (12).
+In `data/dyn_numbers.md`, Section 8a refers to Table I as Table II, and the rows labeled
+Proposed one model are the Learned nested code. Sections C and D of
+`data/general_numbers.md` carry the labels Fig. 3(a) and Fig. 3(b) of an earlier layout.
+Section C holds Fig. 3, and Section D holds Table R2.6 and panel (a) of Fig. R2.6 of the
+response letter. Several script comments use the same earlier numbers.
+
+| Name in the manuscript | Result files and labels |
+|---|---|
+| Proposed | `data/extra/pca_eval.json` key `proposal.opt`, `data/extra/pca_eval_load.json` (`U = 7`), label `proposal` in `pca_numbers.md` |
+| Static ODS-`k` | `pca_eval.json` key `static`, label Static PCA-`k` in `pca_numbers.md` |
+| Static ODS-`k` with energy `d_s/U` | `pca_eval.json` key `matched` |
+| Learned ODS-`U` | `data/ortho_U<U>_s<seed>.json`, label learned Static ODS-`k` in `pca_numbers.md` and Static ODS-`k` in `dyn_numbers.md` |
+| Learned nested code | trained as `data/shared_dyns_s<seed>.json`, reported as its evaluation `data/shared_dyns_clamp_s<seed>.json`, label proposal in `dyn_numbers.md` |
+| Learned shared embedding | `data/shared_agn_s<seed>.json`, label Overlapping masks in `pca_numbers.md` |
+| ToDMA, best `T` | `data/extra/todma_redim.json` |
+| load masks (5) | mode `fixed` in `data/pilot_corr/pca_csi_*.json`, modes `load_pu` (per-user receiver) and `load_joint` (joint LMMSE receiver) in `data/shared/`, `closed_name` `load12` in `data/extra/overlap_bound2_indep_equal_*.json` |
+| channel-aware masks (19) | mode `csiq` in `data/pilot_corr/pca_csi_*.json`, `closed_name` `csiq13` in `data/extra/overlap_bound2_indep_slot-*.json` |
+| Static ODS-`k` placed by the same gains | mode `ods` (energy `d_s/k`) and `odsm` (energy `d_s/U`, files `_x`) |
+| coherence-aware choice | mode `switch` in `data/pilot_corr/pca_csi_coh_*.json` |
+| overlapping masks (18) | mode `gen_joint` in `data/shared/`, `closed_name` `prop2` (pruned in overload: `prop2_pruned`) in `data/extra/overlap_bound2_*.json`, label Proposition 2 in `general_numbers.md` |
+| overlapping masks with gains estimated without pilots | mode `gen_joint_em0` (EM from the frame) against `gen_joint_true0` (known gains) in `data/shared/pilot/` |
+| Learned references with subband gains | `data/pilot_corr/{prop,ods<k>}_<mode>[_nf6]_s1.json` |
 
 ## Layout
 
 | Path | Content |
 |---|---|
-| `Code/pca_eval.py` | every evaluation of the closed-form proposal and of Static ODS-`k`: loads, SNRs, variants, `K`, robustness, SST-2, DistilBERT, classifiers |
-| `Code/pca_mc.py` | Monte Carlo check of the closed-form error and allocation |
-| `Code/pca_numbers.py` | prints every number of the paper and of its supplementary results into `data/pca_numbers.md`, from `data/` only |
-| `Code/pca_fig.py` | regenerates Figs. 2 and 3 and the supplementary figure `fig4_pca_agg.pdf` from `data/` only |
-| `Code/rev_lib.py`, `Code/rev_run.py` | learned references: data split and embedding cache, transceivers (`SharedMuxNest` is the learned nested code, `OrthoDS` the learned partition), MAML training, adaptation, evaluation |
-| `Code/rev_queue.sh`, `Code/dyn_queue.sh`, `Code/extra_runs.sh`, `Code/rev_extra.py` | training and evaluation runs of the learned references |
-| `Code/mask_partition.py` | own-energy share of the transmitted energy per mask (Overlapping masks) |
-| `Code/todma_redim.py` | ToDMA re-dimensioned to 24, 32, and 48 slots of the same block |
-| `Code/pca_csi.py` | closed-form channel-aware masks and their references under slot-varying fading (Section IV-E), CPU |
-| `Code/csi_queue.sh`, `Code/csi_extra_queue.sh`, `Code/csi_equal_queue.sh` | every `pca_csi.py` run of the paper and of the supplementary results |
-| `Code/pilot_corr.py`, `Code/corr_queue.sh` | learned references with channel state, one GPU |
-| `Code/pca_csi_counts.py` | slot counts of the greedy grant per gain rank, on the draws of `pca_csi.py`, CPU |
-| `Code/csi_vals_queue.sh` | the `pca_csi.py` runs that separate the supports of the masks from their values |
-| `Code/pca_csi_ls.py`, `Code/csi_ls_queue.sh` | local search over the slot counts and positions after the greedy grant, on the draws of `pca_csi.py`, CPU |
-| `Code/overlap_bound.py` | load masks against optimized disjoint and real-valued overlapping masks with the joint LMMSE receiver, Gaussian model, CPU |
-| `data/pilot_corr/` | results of `pca_csi.py` (`pca_csi_*.json`), `pca_csi_counts.py` (`pca_csi_counts_*.json`), `pca_csi_ls.py` (`pca_csi_ls_*.json`), and `pilot_corr.py` (`*_s1.json`) |
-| `Code/rev_cache.py` | builds the embedding caches `data/emb_*.pt` (not stored; AG News, SST-2, BERT-base, DistilBERT) |
-| `Code/rev_dyn_numbers.py`, `Code/rev_dynamic_fig.py`, and the other `rev_*` scripts | numbers and figures of the earlier versions, kept with their results |
-| `data/extra/pca_eval.json`, `data/extra/pca_mc.json` | results of the closed-form proposal |
-| `data/*.json`, `data/extra/` | one file per learned run and the evaluations of stored checkpoints |
-| `data/pca_numbers.md`, `data/dyn_numbers.md` | every number quoted in the paper (closed form) and of the learned references |
-| `data/ckpt/` | checkpoints of the learned nested code for seeds 1 to 3, of Learned ODS-1 to 6 for seed 1, and of earlier designs |
-| `fig_cl/` | Figs. 1 to 3 of the paper and the supplementary figure `fig4_pca_agg.pdf` |
+| `Code/general_numbers.py` | prints `data/general_numbers.md`: load adaptivity (A), one scene (B, C), coherence (D), search against the closed forms (E), gain estimation (F), index (G) |
+| `Code/pca_numbers.py`, `Code/rev_dyn_numbers.py` | print `data/pca_numbers.md` and `data/dyn_numbers.md` |
+| `Code/fig_rev.py` | draws Figs. 2 and 3 of the manuscript and Figs. R1.2 and R2.6 of the response letter |
+| `fig1_system_rev.tex`, `Code/fig1_amplitudes.py` | TikZ source of Fig. 1 and the check of its bar heights |
+| `Code/letter_r2_checks.py`, `Code/letter_checks/*.py` | read-only checks that print the letter values not printed above |
+| `Code/pca_eval.py`, `Code/pca_eval_load.py`, `Code/pca_mc.py` | closed-form evaluations of Proposed and Static ODS-`k`, and the Monte Carlo check |
+| `Code/pca_csi.py`, `Code/pca_csi_counts.py`, `Code/pca_csi_ls.py` | load masks, channel-aware masks, and their references under subband gains, CPU |
+| `Code/shared_masks.py`, `Code/shared_theory.py`, `Code/content_stats.py`, `Code/shared_pilot.py` | one scene: caption runs, Gaussian model, content statistics, gain estimation without pilots, CPU |
+| `Code/overlap_bound.py` | numerical search against the closed-form masks with the joint LMMSE receiver, CPU |
+| `Code/rev_lib.py`, `Code/rev_run.py`, `Code/rev_extra.py`, `Code/pilot_corr.py`, `Code/mask_partition.py` | learned references: models, training, evaluation, and evaluations of stored checkpoints |
+| `Code/todma_redim.py` | ToDMA with the best number of token slots. It takes the data split and the encoder from `Code/cl_experiments.py`, which imports `Code/bert_semcom.py`. Both are code of the original submission, and their header comments describe the submitted design. |
+| `Code/rev_cache.py`, `Code/emb_captions.py` | embedding caches `data/emb_*.pt` (not stored) |
+| `Code/*_queue.sh`, `Code/extra_runs.sh` | run queues with generic paths |
+| `data/` | one result file per run (`json`), per-frame arrays (`npz`) where a confidence interval needs them, the number files `*.md` |
+| `data/ckpt/`, `data/pilot_corr/*.pt` | trained reference models (see Trained models) |
+| `fig_cl/` | the figure PDFs of the manuscript and of the response letter |
 
 ## Figure and table map
 
-| Item | Data | Script |
+Run every command from the repository root. "Module" means the code at the top level of
+the script, and the section names the part of the printed file.
+
+| Item | Script and function | Data files |
 |---|---|---|
-| Fig. 1 | transceiver diagram (TikZ): the real-valued mask and the support of the dynamic mask at two loads | none |
-| Fig. 2, per-user CosSim versus SNR | `pca_eval.json` (proposal), `ortho_U{1..6}_s{1,2,3}` | `pca_fig.py` |
-| Fig. 3, per-user CosSim versus load | `pca_eval.json` (proposal, static) | `pca_fig.py` |
-| Supplementary `S(U)` figure | `pca_eval.json` | `pca_fig.py` |
-| Table I, ablations and reference designs | `pca_eval.json` (variants, `K`, matched), `shared_dyns_clamp_s*`, `shared_dyns_pcainit_s1`, `ortho_U*_s*`, `shared_agn_s*`, `extra/todma_redim.json` | `pca_numbers.py` |
-| Section IV-D, robustness and generality (text) | `pca_eval.json` (robust, sst2, distil, classifiers), `ortho_U4_s1`, `sst2_ortho_U4_s1`, `distil_ortho_U4_s1`, `ortho_U8_s1` | `pca_numbers.py` |
-| Section IV-E, slot-varying fading (text) | `pilot_corr/pca_csi_U*_k{6,4}_rho*_nf6*.json` | `pca_csi.py`, `pca_numbers.py` (Section 12 of `pca_numbers.md`) |
-| Learned references with channel state | `pilot_corr/*_s1.json` | `pilot_corr.py`, `pca_numbers.py` |
-| Energy division of Overlapping masks | `extra/mask_partition.json` | `mask_partition.py` |
-| Slot counts of the greedy grant | `pilot_corr/pca_csi_counts_U{2,3,4,6}_nf{0,6}.json` | `pca_csi_counts.py --U <U> --nearfar <0 or 6>` |
-| Section IV-E, supports against values | `pilot_corr/pca_csi_U{1..6}_k6_rho0.7[_nf6]_vals.json` | `csi_vals_queue.sh`, `pca_numbers.py` (Section 13) |
-| Section IV-E, local search over slot positions | `pilot_corr/pca_csi_ls_U{2..6}_nf6_{0,10,20}.json` | `csi_ls_queue.sh`, `pca_numbers.py` (Section 14) |
-| Overlapping masks with the joint LMMSE receiver | `extra/overlap_bound_U{2,4,6,8}_nf{0,6}.json` | `overlap_bound.py --U <U> --nearfar <0 or 6>` |
-| Monte Carlo check | `extra/pca_mc.json` | `pca_mc.py` |
+| Fig. 1 (transceiver and masks in four frames) | `fig1_system_rev.tex` (pdflatex). `Code/fig1_amplitudes.py`: `main()`, `row()`, `alloc()` recompute the bar heights of frames `tau` and `tau+1` and check them against the TikZ source, which stores the bar heights of all four frames | `data/effdim_spectrum_test.npy`, `fig1_system_rev.tex`, `data/shared/content_stats.json` (group energies behind frame `tau+3`) |
+| Fig. 2 (per-user CosSim versus the load) | `Code/fig_rev.py --one`: `fig_load_one("nines")`, then `fig2_choose()` writes `fig_cl/fig2_load_one.pdf` | `data/extra/pca_eval.json`, `data/extra/pca_eval_load.json`, `data/ortho_U{1..6}_s{1,2,3}.json`, `data/ortho_U8_s1.json` |
+| Fig. 3 (NMSE reduction of the overlapping masks, one scene) | `Code/fig_rev.py --one`: `fig_scene_one()` with `theory_red()` and `real_red()` | `data/shared/theory_coco_mix{0.4,0.8}_K4_U{2..8}.json`, `data/shared/shared_coco_mix0.8_K4_U{2..8}_ol.npz`, `data/shared/shared_coco_mix0_K4_U8_ol.npz` |
+| Table I | `Code/pca_numbers.py`: module, Section 10. `Code/letter_checks/tableI_margins.py`: module | `pca_eval.json`, `data/shared_dyns_clamp_s{1,2,3}.json`, `data/ortho_U{1,6}_s{1,2,3}.json`, `data/shared_agn_s{1,2,3}.json`, `data/extra/todma_redim.json` |
+| Section III-C, III-D (search against the closed forms) | `Code/general_numbers.py`: `sec_E()` | `data/extra/overlap_bound2_*.json`, `data/extra/overlap_bound_U{2,4,6,8}_nf{0,6}.json` |
+| Section IV-A, IV-C (one scene) | `Code/general_numbers.py`: `sec_B()`, `sec_C()`, `sec_F()` | `data/shared/content_stats.json`, `data/shared/shared_*.json` and `.npz`, `data/shared/theory_*.json`, `data/shared/pilot/shared_pilot_*.json` |
+| Section IV-B, paragraphs 1 and 2 | `Code/general_numbers.py`: `sec_A()`. `Code/pca_numbers.py`: module, Sections 1 to 8 and 11. `Code/letter_checks/learned_margins.py`, `block_fading_checks.py`: module | `pca_eval.json`, `pca_eval_load.json`, `pca_mc.json`, `todma_redim.json`, `data/ortho_U*_s*.json`, `data/sst2_ortho_U4_s1.json`, `data/distil_ortho_U4_s1.json` |
+| Section IV-B, paragraph 3 (subband gains and their age) | `Code/general_numbers.py`: `sec_D()`. `Code/pca_numbers.py`: module, Section 12. `Code/letter_checks/coh_minima.py`: module | `data/pilot_corr/pca_csi_coh_*.json` and `.npz`, `data/pilot_corr/pca_csi_U*_k6_rho0.7_nf6.json` |
+| Letter Table R1.1 | `Code/letter_checks/letter_tables.py`: module, part 1 (`pca_numbers.py` Section 9 gives 10 dB) | `pca_eval.json`, `data/ortho_U{1..6}_s{1,2,3}.json` |
+| Letter Table R1.2 | `Code/general_numbers.py`: `sec_A()` (A.1 to A.3). `Code/rev_dyn_numbers.py`: module, Sections 1 and 8 | `pca_eval.json`, `pca_eval_load.json`, `data/ortho_U*_s*.json`, `data/shared_dyns_clamp_s*.json`, `data/shared_dyns_U8_s1.json` |
+| Letter Fig. R1.2 | `Code/fig_rev.py`: `fig_load_col()` writes `fig_cl/fig2_load_col.pdf` | as Fig. 2 |
+| Letter Table R1.4 | `Code/pca_numbers.py`: module, Section 8 | `pca_eval.json`, `data/ortho_U4_s1.json`, `data/sst2_ortho_U4_s1.json`, `data/distil_ortho_U4_s1.json`, `data/ortho_U8_s1.json` |
+| Letter Table R1.5 | `Code/letter_checks/comment_checks.py`: module, block R1-4. `Code/rev_dyn_numbers.py`: module, Sections 1, 5, 8, 8a. `Code/general_numbers.py`: `sec_A()` (A.1, Proposed) | `data/shared_U4_s{1,2,3}.json`, `data/shared_U4_randmask_s{1,2,3}.json`, `data/shared_agn_s*.json`, `data/ortho_U4_s*.json`, `data/shared_dyns_clamp_s1.json`, `data/shared_dyns_freezetx_s1.json`, `pca_eval.json` |
+| Letter Table R2.3 | `Code/letter_r2_checks.py`: module, part 1. `Code/pca_numbers.py`: Sections 4 and 5 | `pca_eval.json` |
+| Letter Table R2.4 | `Code/pca_numbers.py`: module, Section 12 (learned references with subband gains) | `data/pilot_corr/pca_csi_U{4,6}_k6_rho0.7_nf6.json`, `pca_csi_U4_k4_rho0.7_nf6.json`, `prop_*_nf6_s1.json`, `ods{4,6}_*_nf6_s1.json` |
+| Letter Table R2.5a | `Code/letter_r2_checks.py`: module, part 3. `Code/pca_numbers.py`: Sections 1 and 6 | `pca_eval.json`, `data/ortho_U{1,4,6}_s1.json`, `data/ortho_U{1,4,6}_{trlow,trhigh}_s1.json` |
+| Letter Table R2.5b | `Code/letter_checks/letter_tables.py`: module, part 5 | field `cfg` of `data/ortho_U4_s1.json`, `data/shared_dyns_s1.json`, `data/shared_agn_s1.json` |
+| Letter Table R2.6 | `Code/general_numbers.py`: `sec_D()` (D.1 to D.3) | `data/pilot_corr/pca_csi_coh_rho*_eta*_U*_nf6.json` and `.npz` |
+| Letter Fig. R2.6 | `Code/fig_rev.py`: `fig_scene_col()` with `coh()` writes `fig_cl/fig3_scene_col.pdf` | `data/pilot_corr/pca_csi_coh_*_nf6.json`, panel (b) as Fig. 3 |
+| Letter Table R2.7a | `Code/letter_checks/letter_tables.py`: module, part 2 | `pca_eval.json`, seed-1 files `ortho_U4`, `ortho_U6`, `sst2_ortho_U4`, `sst2_ortho_U6`, `distil_ortho_U4`, `shared_dyns_clamp`, `sst2_shared_dyns`, `distil_shared_dyns` in `data/` |
+| Letter Table R2.7b | `Code/pca_numbers.py`: module, Sections 1 and 8 | `pca_eval.json` (classifiers), `data/ortho_U4_s1.json`, `data/sst2_ortho_U4_s1.json` |
+| Letter Table R2.8 | `Code/letter_checks/r28_checks.py`: module | `pca_eval.json`, `data/ortho_U{1..6}_s{1,2,3}.json`, `todma_redim.json` |
+| Letter, Comment 1.2 (overlap in overload) | `Code/general_numbers.py`: `sec_E()` (E.2) | `data/extra/overlap_bound_U{6,8}_nf6.json` |
+| Letter, Comment 1.4 (common fading) | `Code/letter_checks/comment_checks.py`: module, block R1-6 | `data/shared_U4_common_s1.json`, `data/ortho_U4_common_s1.json`, `data/shared_U4_s1.json`, `data/ortho_U4_s1.json` |
+| Letter, Comment 2.1 (training curves, 300 epochs) | `Code/letter_checks/comment_checks.py`: block R2-6. `Code/letter_checks/letter_tables.py`: part 3 | field `conv` of `data/ortho_U*_s*.json`, `data/shared_nest_s1.json`, `data/shared_nest_e300_s1.json` |
+| Letter, Comment 2.4 (Learned nested code under subband gains) | `Code/letter_r2_checks.py`: part 4 | `data/pilot_corr/prop_fixed_nf6_s1.json`, `data/pilot_corr/pca_csi_U*_k6_rho0.7_nf6.json` |
+| Letter, Comment 2.5 (MAML and adaptation) | `Code/letter_r2_checks.py`: part 2. `Code/letter_checks/letter_only_checks.py`: module. `Code/rev_dyn_numbers.py`: Section 8 | `data/shared_dyns_joint_s1.json`, `data/shared_U4_{alpha1e-4,alpha2e-3,inner3,mb2,mb6}_s1.json`, `data/extra/noadapt_shared_dyns_s*.json` |
+| Letter, Comment 2.6 (subband gains) | `Code/letter_checks/delayed_loss.py`, `coh_minima.py`: module. `Code/letter_checks/letter_tables.py`: part 4. `Code/pca_numbers.py`: Sections 12 to 14 (subband counts at the end of Section 12) | `data/pilot_corr/pca_csi_coh_*.json`, `data/pilot_corr/pca_csi_counts_U*_nf*.json`, `data/pilot_corr/pca_csi_ls_*.json`, `data/pilot_corr/*_vals.json` |
+| Letter, Comment 2.6 (estimation errors at the receiver) | `Code/letter_checks/letter_tables.py`: part 6. `Code/general_numbers.py`: `sec_F()`. `Code/pca_numbers.py`: Sections 6 and 12 (known gains) | `data/shared/pilot/shared_pilot_*.json`, `data/shared/pilot/shared_pilot_coco_K4_U4_E1_emauto0_fs_it30_snr0.npz` (per-frame arrays of the CI), `pca_eval.json`, `data/pilot_corr/pca_csi_U4_k6_rho0.7_nf6_genie.json` |
 
-## Reproduction
+Tables R1.3 and R2.1 of the letter state the rules and the components of the schemes and
+need no data. The comment block at the top of each script describes its inputs, and the
+map lists the data files. `data/effdim_spectrum_test.npy`, the input of
+`Code/fig1_amplitudes.py`, holds the cumulative eigenvalue share of the second moment of
+the centered, l2-normalized test embeddings of `data/emb_ag_news_bert-base-uncased.pt`,
+the cache that `Code/rev_cache.py` builds. No script of this repository writes it. The
+docstring of `Code/fig1_amplitudes.py` describes it and compares it with the second
+moment of the test split of that cache.
 
-Requirements: Python 3.10 or later, PyTorch, `transformers`, `datasets`,
-`numpy`, `scipy`, `matplotlib`. Run the scripts from `Code/`.
+## Regenerate the numbers and figures
 
 ```bash
-cd Code
-python rev_cache.py          # embedding caches (AG News, SST-2, BERT-base, DistilBERT)
-python pca_eval.py           # closed-form proposal and Static ODS-k, about two minutes on a CPU
-python pca_mc.py             # Monte Carlo check of the closed forms
-python pca_numbers.py        # data/pca_numbers.md
-python pca_fig.py            # Figs. 2 and 3 and the S(U) figure
-bash csi_queue.sh && bash csi_extra_queue.sh && bash csi_equal_queue.sh   # Section IV-E, CPU
-python pca_numbers.py        # again, to add Section 12
+python Code/general_numbers.py --public      # data/general_numbers.md
+python Code/pca_numbers.py                   # data/pca_numbers.md
+python Code/rev_dyn_numbers.py               # data/dyn_numbers.md
+python Code/fig_rev.py                       # Figs. 2 and 3, Figs. R1.2 and R2.6, and earlier variants
+python Code/fig_rev.py --one                 # Figs. 2 and 3 only
+python Code/fig1_amplitudes.py               # bar heights of Fig. 1
+SOURCE_DATE_EPOCH=1794873600 FORCE_SOURCE_DATE=1 latexmk -pdf -outdir=out fig1_system_rev.tex \
+  && cp out/fig1_system_rev.pdf fig_cl/       # Fig. 1
+python3 -I Code/letter_r2_checks.py data
+python3 -I Code/letter_checks/letter_tables.py data
+for f in block_fading_checks comment_checks learned_margins letter_only_checks r28_checks tableI_margins; do
+  python3 -I Code/letter_checks/$f.py data
+done
+python3 -I Code/letter_checks/coh_minima.py data/pilot_corr
+python3 -I Code/letter_checks/delayed_loss.py data/pilot_corr
+python3 -I Code/letter_checks/fig3_ci_vs_marker.py data/general_numbers.md
 ```
 
-The learned references with channel state take about one hour per run on one
-GPU: `GPU=0 bash corr_queue.sh`.
+The three number files are regenerated byte for byte. `Code/fig_rev.py` draws with the
+Arial font. With Arial and the versions below, it reproduces the stored PDFs byte for
+byte. With the fixed source date above and pdfTeX 1.40.29, latexmk reproduces the stored
+PDF of Fig. 1 byte for byte. Without it, the PDF differs only in its creation date and
+file identifier. `Code/fig_rev.py` also writes PNG copies and earlier variants that neither
+document includes, and `.gitignore` lists them.
 
-The learned references are trained as in the earlier versions:
+## Rerun the experiments
 
-```bash
-PY=python EP=150 BS=64 N_PAR=3 bash rev_queue.sh main_ortho      # Learned ODS-1 to 6, three seeds (also stage scale, general)
-PY=python EXTRA="--per-user-rx" EP=150 BS=64 N_PAR=3 bash rev_queue.sh main   # Overlapping masks
-PY=python bash dyn_queue.sh main && PY=python bash dyn_queue.sh clamp        # learned nested code
-python rev_run.py --name shared_dyns_pcainit --scheme shared_dyns --init pca --seed 1 --K 4 --U 6 --U-max 6 \
-    --agnostic --epochs 150 --steps 100 --batch 64 --trials 2000 --eval-U 1 2 3 4 5 6 --out-dir ../data
-```
+Rerun in a separate clone. The runs write into `data/` and `data/ckpt/` and replace the
+stored result files and checkpoints, and the number files then no longer match the stored
+ones byte for byte. The queues change to the folder of the script, so they run from any
+working directory. `PY` selects the interpreter (default `python`) and `GPU` the GPU index
+(default 0). Training runs use CUDA, then Apple MPS, then the CPU, whichever is present
+first. Every run writes one result file.
 
-The closed-form evaluations use the evaluation seed 123 + SNR, so the variants
-of one scenario share their draws. The runs with the gains of the previous block
-draw their own, and `pca_numbers.md` also gives their losses corrected by the
-load masks. The learned references use the training seeds 1, 2, and 3
-and were trained on NVIDIA GPUs and an Apple M5 Max. GPU training is not
-bit-exact, so a rerun reproduces their values within the seed spread of the
-paper.
+The one-scene, coherence, search, and gain-estimation queues take `N_PAR` parallel runs
+and `THREADS` BLAS threads per run. The `csi_*` queues use one BLAS thread per run.
+`csi_queue.sh` and `csi_extra_queue.sh` take `N_PAR` (default 14 and 12), and
+`csi_equal_queue.sh`, `csi_vals_queue.sh`, and `csi_ls_queue.sh` start all their runs at
+once.
+
+`Code/rev_queue.sh` skips a run whose result file already exists in `OUT` (default
+`data/`), and every reported learned run is stored there. To retrain them, give it an empty
+folder, for example `OUT=../rerun bash Code/rev_queue.sh main_ortho` (`OUT` is relative to
+`Code/`). It passes `--per-user-rx` to every run of Learned shared embedding and its
+variants, as their field `cfg.per_user_rx` records. `Code/coherence_queue.sh` skips a run
+whose stored result is complete, so move those files out of `data/pilot_corr/` to rerun
+them. Every other queue reruns its jobs in a fresh clone and overwrites their outputs in
+`data/`.
+
+1. Embedding caches (not stored): `python Code/rev_cache.py` builds AG News with BERT-base
+   and with DistilBERT and SST-2 with BERT-base. `python Code/emb_captions.py --dataset coco`
+   and `--dataset flickr` read the caption sets from the default Hugging Face cache
+   `~/.cache/huggingface/hub` and ignore `HF_HOME`. Download them first with
+   `huggingface-cli download yerevann/coco-karpathy --repo-type dataset` and
+   `huggingface-cli download nlphuji/flickr30k flickr_annotations_30k.csv --repo-type dataset`.
+2. Closed forms: `python Code/pca_eval.py`, `python Code/pca_eval_load.py`,
+   `python Code/pca_mc.py`. They run on the CPU and read the embedding cache with PyTorch.
+3. Subband gains, CPU: `bash Code/csi_queue.sh`, `csi_extra_queue.sh`,
+   `csi_equal_queue.sh`, `csi_vals_queue.sh`, `csi_ls_queue.sh`, and
+   `bash Code/coherence_queue.sh`. Subband counts:
+   `python Code/pca_csi_counts.py --U <U> --nearfar <0 or 6>` for `U` = 2, 3, 4, 6.
+4. One scene, CPU: `bash Code/shared_theory_queue.sh` (runs `Code/content_stats.py`
+   first when `data/shared/content_stats.json` is missing), `bash Code/shared_masks_queue.sh`,
+   `bash Code/overload_queue.sh`, and `bash Code/pilot_queue.sh` (gain estimation).
+5. Search against the closed forms, CPU: `bash Code/overlap_bound_queue.sh [original|run2|all]`.
+6. Learned references, GPU optional: `OUT=<empty folder> bash Code/rev_queue.sh <stage>`
+   with the stages `main_ortho`, `ortho_s3`, `scale`, `main`, `decomp`, `ablate`, `ablate_b`, `general`,
+   and `snr`. `bash Code/dyn_queue.sh <stage>` with `main`, `clamp`, `ablate`, `eval`,
+   `history`, `pcainit`, `todma`, and `report`. Then `bash Code/extra_runs.sh` and
+   `bash Code/corr_queue.sh` (learned references with subband gains).
+
+Seeds: the evaluations of Proposed and Static ODS-`k` draw with the seed 123 + SNR, so the
+schemes of one point share their draws. The header of each script gives its other seeds,
+for example those of the caption runs and of the gain estimation. The learned references
+use the training seeds 1, 2, and 3. The bootstrap intervals resample frames with
+`numpy.random.default_rng(555 + SNR)`.
+
+Result files store their arguments in `args`, `cfg`, `meta`, or `protocol`. The
+evaluations of stored checkpoints in `data/extra/` store the name, seed, and device of the
+evaluated model, and `Code/dyn_queue.sh` gives the ToDMA settings. The learned references
+were trained on NVIDIA GPUs and on an Apple M5 Max. Their field `cfg` stores the device and
+the PyTorch version, except for the learned references with subband gains in
+`data/pilot_corr/`. GPU training is not bit-exact, so a rerun reproduces their values
+within the seed spread of the paper. The field `code` of the gain-estimation results
+records the MD5 of `Code/shared_pilot.py` and `Code/shared_masks.py` at run time.
+`Code/shared_masks.py` matches it. The released `Code/shared_pilot.py` differs from that
+copy in comment lines and help texts only.
+
+## Software
+
+* Python 3.10, numpy 2.2.5, and matplotlib 3.10.8 for the number files and figures. The
+  letter checks need only the Python standard library, except part 6 of
+  `Code/letter_checks/letter_tables.py`, which reads per-frame arrays with numpy. The
+  number files, figures, and letter checks need no PyTorch.
+* PyTorch for every experiment script, which reads the embedding caches with torch, and
+  for the learned references: 2.11.0 with CUDA 12.8 or 13.0 on NVIDIA GPUs, and 2.5.1 on
+  Apple MPS.
+* transformers 4.46.3 and datasets 3.1.0 for the embedding caches.
+* scipy for `pca_csi.py` and the scripts that import it (`pca_csi_counts.py`,
+  `pca_csi_ls.py`, `overlap_bound.py`), `pilot_corr.py`, `shared_masks.py`,
+  `shared_theory.py`, and `shared_pilot.py`. pyarrow and pandas for `emb_captions.py`.
+* A TeX installation with TikZ and the `standalone` class for Fig. 1.
+
+## Datasets and models
+
+The embeddings come from public datasets and encoders, which keep their licenses and terms
+of use. Read them on the dataset and model cards before reuse.
+
+* AG News (X. Zhang, J. Zhao, and Y. LeCun, 2015), Hugging Face `fancyzhx/ag_news`.
+* COCO captions (T.-Y. Lin et al., 2014), Karpathy split `yerevann/coco-karpathy`. The
+  8,000 fit images and 2,000 test images are drawn with seed 0 from the training part of
+  the Karpathy split. The COCO annotations are released under CC BY 4.0, and the images
+  under the Flickr terms.
+* SST-2 (R. Socher et al., 2013), Hugging Face `stanfordnlp/sst2`.
+* Flickr30k captions (P. Young et al., 2014), Hugging Face `nlphuji/flickr30k`, response
+  letter only.
+* BERT-base uncased (J. Devlin et al., 2019) and DistilBERT base uncased (V. Sanh et al.,
+  2019), Hugging Face `bert-base-uncased` and `distilbert-base-uncased`, Apache 2.0.
+
+## Trained models
+
+Git tracks the checkpoints listed in `.gitignore`.
+
+* Learned ODS-`U`: `data/ckpt/ortho_U{1..6}_s{1,2,3}.pt` and `data/ckpt/ortho_U8_s1.pt`.
+* Learned nested code: `data/ckpt/shared_dyns_s{1,2,3}.pt`. The reported values are its
+  evaluations `data/shared_dyns_clamp_s*.json` (field `reeval_of`).
+* Learned shared embedding: `data/ckpt/shared_agn_s1.pt`.
+* Learned ODS-4 and ODS-6 on SST-2 and Learned ODS-4 with DistilBERT:
+  `data/ckpt/sst2_ortho_U4_s1.pt`, `sst2_ortho_U6_s1.pt`, `distil_ortho_U4_s1.pt`.
+* Learned ODS-4 under common fading: `data/ckpt/ortho_U4_common_s1.pt`.
+* The four-user version of Learned shared embedding: `data/ckpt/shared_U4_s1.pt`.
+* Learned references with subband gains: `data/pilot_corr/*_s1.pt`.
+
+Each seed of Learned shared embedding exceeds 50 MB, the largest file that GitHub accepts
+without a warning. Seed 1 has been in the repository since an earlier version. To keep the
+repository small, the other checkpoints of reported runs are in the release asset of this
+version on the Releases page of the repository. These are seeds 2 and 3 of Learned shared
+embedding, the four-user models of the response letter, and the learned runs that only the
+response letter reports. The asset:
+
+* file `load-adaptive-semantic-multiplexing-models.tar.gz`
+* SHA-256 `3fb2a54ad54829aa95080e3dac019d3df052c740f02066e718de90d1b6b5317d`
+
+Unpack it at the repository root with
+`tar -xzf load-adaptive-semantic-multiplexing-models.tar.gz`. It writes these files to
+`data/ckpt/`, which `.gitignore` keeps out of git:
+
+* `shared_agn_s2.pt`, `shared_agn_s3.pt` (Learned shared embedding, Table I)
+* `shared_U4_s2.pt`, `shared_U4_s3.pt`, `shared_U4_randmask_s{1,2,3}.pt` (Table R1.5)
+* `shared_U4_common_s1.pt` (common fading, Comment 1.4)
+* `shared_U4_{alpha1e-4,alpha2e-3,inner3,mb2,mb6}_s1.pt` (MAML configuration, Comment 2.5)
+* `shared_dyns_{U8,joint,K1,K8,freezetx,pcainit}_s1.pt` (variants of the Learned nested
+  code: eight users, joint training instead of meta-learning, `K = 1` and `K = 8`, a
+  transmit projection frozen at random values, and the start from the principal components)
+* `sst2_shared_dyns_s1.pt`, `distil_shared_dyns_s1.pt` (Learned nested code on SST-2 and
+  with DistilBERT)
+* `ortho_U{1,4,6}_{trlow,trhigh}_s1.pt` (Learned ODS-`U` trained on 0 to 10 dB or on 15 to
+  25 dB, Table R2.5a)
+* `shared_nest_s1.pt`, `shared_nest_e300_s1.pt` (training curves and the 300-epoch run,
+  Comment 2.1)
+
+No script that regenerates the numbers or figures reads a checkpoint. Each result file in
+`data/` holds the training configuration of its run in the field `cfg`, and the queues
+above retrain them.
 
 ## Earlier versions
 
-The original submission is kept at the tag `original-submission`, the revision
-with overlapping masks at `parity-revision-20261021`, and the learned nested
-code as the proposal at `learned-nested-20261103`.
+The original submission is kept at the tag `original-submission`, the revision with
+overlapping learned masks at `parity-revision-20261021`, the Learned nested code as the
+proposal at `learned-nested-20261103`, and the closed-form version of 2026-11-04 at
+`closed-form-pca-20261104`.
 
 ## Citation
 
-The letter is under review. Until it appears, please cite this repository and
-the earlier shared-embedding paper:
+The paper is under review at IEEE Communications Letters. Until it appears, please cite
+this repository and the earlier shared-embedding paper.
 
-> K.-H. Lee, H.-H. Choi, and J.-R. Lee, "Code and data for load-adaptive
-> semantic multiplexing," 2026. [Online]. Available:
-> https://github.com/KiHoLee/load-adaptive-semantic-multiplexing
+```bibtex
+@misc{lee2026code,
+  author       = {Lee, Ki-Ho and Choi, Hyun-Ho and Lee, Jung-Ryun},
+  title        = {Code and data for load-adaptive semantic multiplexing},
+  howpublished = {[Online]. Available: \url{https://github.com/KiHoLee/load-adaptive-semantic-multiplexing}},
+  year         = {2026}
+}
+```
 
-> K.-H. Lee, H.-H. Choi, and J.-R. Lee, "Transformer-based shared embedding
-> for multiple access in semantic communications," *IEEE J. Sel. Areas
-> Commun.*, vol. 44, pp. 2622-2637, 2026.
+> K.-H. Lee, H.-H. Choi, and J.-R. Lee, "Load-adaptive semantic multiplexing via nested
+> principal-component codes and dynamic masks," under review at *IEEE Commun. Lett.*
+
+> K.-H. Lee, H.-H. Choi, and J.-R. Lee, "Transformer-based shared embedding for multiple
+> access in semantic communications," *IEEE J. Sel. Areas Commun.*, vol. 44,
+> pp. 2622-2637, 2026.

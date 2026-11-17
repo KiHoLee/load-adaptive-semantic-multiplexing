@@ -6,7 +6,9 @@
 #   noted): learned nested code shared_dyns_clamp_s*, the same started from PCA shared_dyns_pcainit_s1,
 #   Static ODS-k ortho_U<k>_s*, Overlapping masks shared_agn_s*, Static ODS-6 with energy d_s/U
 #   extra/energy_ortho_U6_s*, ToDMA extra/todma_redim.json. Monte Carlo check of the closed forms:
-#   extra/pca_mc.json (Code/pca_mc.py).
+#   extra/pca_mc.json (Code/pca_mc.py). Section 8 also reads sst2_ortho_U4_s1, distil_ortho_U4_s1,
+#   ortho_U8_s1 and extra/mask_partition.json; Sections 12 to 14 read data/pilot_corr/ (pca_csi_*.json,
+#   pca_csi_counts_*.json, pca_csi_ls_*.json and the learned references *_s1.json of Code/pilot_corr.py).
 # =========================================================
 import glob, json, os, statistics as st
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -218,14 +220,14 @@ w(f"\n- largest |measured / closed form - 1|: training sentences {MC['max_abs_re
 # ---- 12. channel-aware masks under time-correlated fading (Code/pca_csi.py, data/pilot_corr/pca_csi_*.json)
 w("\n## 12. Channel-aware masks under time-correlated fading (Code/pca_csi.py)\n")
 w("AR(1) complex Gaussian gain per user over the 24 slots (rho between adjacent slots), independent across users, "
-  "near-far offset uniform in [-6, 6] dB per user and frame where marked nf6; the scheduler knows the slot gains "
+  "near-far offset uniform in [-6, 6] dB per user and frame where marked nf6; the receiver knows the slot gains "
   "(perfect, or delayed with correlation rho_b); blind per-slot gain estimate; 2,000 frames per user, draws shared "
   "by all schemes of a scenario (seed 123 + SNR). Files without the suffix _x hold fixed, csi, csiq, ods, odsfix; "
   "files with _x hold odsm (and csic), files with _e hold csiqe.")
-w("Schemes: csiq = Proposed, channel-aware masks (greedy slot counts by the total MSE, energy 128 per granted slot); "
+w("Schemes: csiq = Proposed, channel-aware masks (greedy slot counts by the total MSE, energy 128 per slot of the support); "
   "csi = channel-aware placement with the slot counts of the load masks (energy d_s/U); fixed = Proposed with the "
   "load masks (4), no CSI at the transmitter; ods = Static ODS-k with known gains (the same slot gains as the proposal, "
-  "not its grant: N/k slots per user by the Hungarian assignment on log(1 + gamma g^2), energy d_s/k); "
+  "not its supports: N/k slots per user by the Hungarian assignment on log(1 + gamma g^2), energy d_s/k); "
   "odsm = the same with energy d_s/U; odsfix = Static ODS-k with fixed "
   "contiguous parts, no CSI; csiqe = csiq with every count capped at that of the load masks (equal counts at U=6, "
   "greedy placement only); weakest = mean over frames of the smallest per-user CosSim of the frame.\n")
@@ -285,7 +287,7 @@ for U in range(1, 5):
         if b_ in r and "csiq" in r6:
             d0 = [cval(r6, "csiq", s) - cval(r, b_, s) for s in S]
             w(f"- csiq minus Static ODS-4 with known gains ({b_}), U={U}: {rng_(d0)} (0 dB {d0[0]:+.3f})")
-w("\n### Delayed CSI at the scheduler (rho0.7_nf6, mean at 0 / 10 / 20 dB)\n")
+w("\n### Delayed CSI (rho0.7_nf6, mean at 0 / 10 / 20 dB)\n")
 w("| rho_b | U | fixed | csi | csiq | ods | odsm |")
 w("|---|---|---|---|---|---|---|")
 for d in ("0.9", "0.7"):
@@ -339,13 +341,27 @@ for f in sorted(glob.glob(os.path.join(PC, "*_s1.json"))):
       + f"; largest minus csiq {best[0]:+.4f} (U={best[1]}, {best[2]} dB)")
 w("- csiq without SNR offsets: " + "; ".join(
     f"U{U} " + "/".join(f"{cval(csi_ld(f'U{U}_k6_rho0.7'), 'csiq', s):.3f}" for s in T3) for U in range(1, 7)))
+# subband counts of the greedy supports (Code/pca_csi_counts.py, data/pilot_corr/pca_csi_counts_U<U>_nf<X>.json)
+_cnt = {(_Uc, _nfc): os.path.join(PC, f"pca_csi_counts_U{_Uc}_nf{_nfc}.json") for _Uc in (2, 3, 4, 6) for _nfc in (6, 0)}
+if all(os.path.exists(_pc) for _pc in _cnt.values()):
+    w("\n### Subband counts of the weakest user (Code/pca_csi_counts.py, rho=0.7, 0 / 10 / 20 dB)\n")
+    w("Share of frames in which the weakest user of a frame (lowest mean slot gain) holds more than, as many as, or "
+      "fewer than N/U slots under the greedy supports of csiq; spearman = mean rank correlation of count and gain.\n")
+    w("| offsets | U | N/U | more | equal | fewer | spearman |")
+    w("|---|---|---|---|---|---|---|")
+    for _nfc in (6, 0):
+        for _Uc in (2, 3, 4, 6):
+            _rc = json.load(open(_cnt[(_Uc, _nfc)]))["res"]
+            w(f"| {'up to +-6 dB' if _nfc else 'none'} | {_Uc} | {_rc['0']['equal_count']:g} | "
+              + " | ".join("/".join(f"{_rc[s][k]:.3f}" for s in T3)
+                           for k in ("weakest_more", "weakest_equal", "weakest_fewer", "spearman_mean")) + " |")
 # 2026-11-04: mask support against mask values (pca_csi.py modes fixedb, csiqw, csiqb, files *_vals.json)
 w("\n## 13. Mask support against mask values\n")
 w("A mask is its support (the slots of a user) times its values (the amplitudes). Block fading: the values with "
   "P_i proportional to lambda_i (proposal/prop of pca_eval.json) against the allocation (12) (proposal/opt). "
   "Slot-varying fading (rho=0.7): fixedb = load masks with equal values on all used entries, fixed = load masks with (12), "
   "csiqb = channel-aware support with equal values, csiqw = channel-aware support with (12) at unit gain, "
-  "csiq = channel-aware masks with (13). The csiq family shares the greedy grant and all draws.\n")
+  "csiq = channel-aware masks with (13). The csiq family shares the greedy supports and all draws.\n")
 _po, _pp = E["proposal"]["opt"], E["proposal"]["prop"]
 _c = lambda x: x["cos"] if isinstance(x, dict) else x
 _d = [(_c(_po[U][s]) - _c(_pp[U][s]), U, s) for U in _po for s in _po[U] if U in _pp]
@@ -369,15 +385,15 @@ for _nf, _lab in (("_nf6", "offsets up to +-6 dB"), ("", "no offsets")):
       f"from 10 dB on: {_rg(lambda r, s: cval(r, 'csiq', s) - cval(r, 'csiqb', s), [x for x in S if int(x) >= 10])}")
     w(f"- gain-aware part of the values, csiq minus csiqw, all SNRs: {_rg(lambda r, s: cval(r, 'csiq', s) - cval(r, 'csiqw', s), S)}")
     w(f"- values (12) on the load masks, fixed minus fixedb, all SNRs: {_rg(lambda r, s: cval(r, 'fixed', s) - cval(r, 'fixedb', s), S)}")
-# 2026-11-04: local search over the slot counts and positions after the greedy grant (Code/pca_csi_ls.py)
+# 2026-11-04: local search over the slot counts and positions after the greedy supports (Code/pca_csi_ls.py)
 _ls = {}
 for _f in sorted(glob.glob(os.path.join(PC, "pca_csi_ls_U*_nf6*.json"))):
     _r = json.load(open(_f))
     for _snr, _v in _r["res"].items():
         _ls[(_r["args"]["U"], int(_snr))] = _v
 if _ls:
-    w("\n## 14. Greedy slot grant against a local search over slot counts and positions (rho=0.7, offsets up to +-6 dB)\n")
-    w("csiq = greedy grant of the channel-aware masks; csiql = csiq followed by single-slot moves and pairwise swaps between users "
+    w("\n## 14. Greedy supports against a local search over slot counts and positions (rho=0.7, offsets up to +-6 dB)\n")
+    w("csiq = greedy supports of the channel-aware masks; csiql = csiq followed by single-slot moves and pairwise swaps between users "
       "while the sum MSE under (13) decreases (best move per frame and round). Same draws, placement, allocation, and receiver.\n")
     w("| U | SNR | csiq | csiql | csiql - csiq | weakest csiq / csiql | sum MSE greedy -> search | frames changed | counts changed | rounds |")
     w("|---|---|---|---|---|---|---|---|---|---|")

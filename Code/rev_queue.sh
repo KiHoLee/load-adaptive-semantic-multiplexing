@@ -6,13 +6,15 @@
 #   bash rev_queue.sh decomp    # gain decomposition at U=4 (and K=1, U=6)
 #   bash rev_queue.sh ablate    # K sweep, MAML configuration, training SNR range
 #   bash rev_queue.sh general   # SST-2, DistilBERT
+#   bash rev_queue.sh snr       # Learned ODS-U trained on 0-10 dB and on 15-25 dB (U = 1, 4, 6, seed 1)
 # =========================================================
 cd "$(dirname "$0")"
-# local Mac: ~/cl_env; AINS: PY=~/tr_env/bin/python PYTHONPATH=~/sse_rev/pylib
-PY=${PY:-~/cl_env/bin/python}
+PY=${PY:-python}
+export CUDA_VISIBLE_DEVICES=${GPU:-0}
 OUT=${OUT:-../data}
 EP=${EP:-150}; ST=${ST:-100}; TR=${TR:-2000}; BS=${BS:-64}
-EXTRA=${EXTRA:-}       # e.g. "--per-user-rx" once the receiver design is fixed
+EXTRA=${EXTRA:---per-user-rx}   # every reported shared run used the per-user receiver (cfg.per_user_rx);
+                                # the case below drops it for ortho and the *_sharedrx jobs
 N_PAR=${N_PAR:-3}
 mkdir -p $OUT logs
 JOBS=()
@@ -68,14 +70,14 @@ scale)        # scalability in U beyond the design point (seed 1)
     add --name ortho_U${U}  --scheme ortho  --U $U --K 4 --seed 1
   done ;;
 decomp)   add_decomp_a; add_decomp_b ;;
-decomp_a) add_decomp_a ;;   # gain decomposition, part A (AINS)
-decomp_b) add_decomp_b ;;   # gain decomposition, part B (Mac)
-ortho_s3)     # orthogonal dimension sharing, seed 3 only (Mac)
+decomp_a) add_decomp_a ;;   # gain decomposition, part A
+decomp_b) add_decomp_b ;;   # gain decomposition, part B
+ortho_s3)     # orthogonal dimension sharing, seed 3 only
   for U in 1 2 3 4 5 6; do
     extra=""; [ $U -eq 4 ] && extra="--probe --robust"; [ $U -eq 6 ] && extra="--probe --robust"
     add --name ortho_U${U}  --scheme ortho  --U $U --K 4 --seed 3 $extra
   done ;;
-ablate_b)     # ablation remainder (Mac)
+ablate_b)     # ablation remainder
   add --name shared_U4_joint --scheme shared --U 4 --K 4 --seed 1 --mode joint --adapt-steps 0
   add --name shared_U4_trlow  --scheme shared --U 4 --K 4 --seed 1 --train-snrs 0 5 10
   add --name shared_U4_trhigh --scheme shared --U 4 --K 4 --seed 1 --train-snrs 15 20 25
@@ -100,7 +102,12 @@ general)
   done
   add --name distil_shared_U4 --scheme shared --U 4 --K 4 --seed 1 --model distilbert-base-uncased
   add --name distil_ortho_U4  --scheme ortho  --U 4 --K 4 --seed 1 --model distilbert-base-uncased ;;
-*) echo "usage: rev_queue.sh main|main_ortho|ortho_s3|scale|decomp|decomp_a|decomp_b|ablate|ablate_b|general"; exit 1 ;;
+snr)          # Learned ODS-U with SNR-specialized training (seed 1)
+  for U in 1 4 6; do
+    add --name ortho_U${U}_trlow  --scheme ortho --U $U --K 4 --seed 1 --train-snrs 0 5 10
+    add --name ortho_U${U}_trhigh --scheme ortho --U $U --K 4 --seed 1 --train-snrs 15 20 25
+  done ;;
+*) echo "usage: rev_queue.sh main|main_ortho|ortho_s3|scale|decomp|decomp_a|decomp_b|ablate|ablate_b|general|snr"; exit 1 ;;
 esac
 runall
 echo "QUEUE $1 DONE $(date)"

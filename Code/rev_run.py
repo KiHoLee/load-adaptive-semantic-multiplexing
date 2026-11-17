@@ -35,7 +35,7 @@ def main():
                          "active subsets")
     ap.add_argument("--U-train-max", type=int, default=None,
                     help="load-agnostic only: draw the active load from 1..U_train_max "
-                         "instead of 1..U_max (registered masks > active users)")
+                         "instead of 1..U_max (stored masks > active users)")
     ap.add_argument("--epochs", type=int, default=100)
     ap.add_argument("--steps", type=int, default=100)
     ap.add_argument("--batch", type=int, default=32)

@@ -1,10 +1,10 @@
 # =========================================================
-# pca_csi_ls.py — is the greedy slot grant of the channel-aware masks near the best slot positions?
+# pca_csi_ls.py — are the greedy subband counts of the channel-aware masks near the best slot positions?
 # (2026-11-04). Same channel, draws, placement, allocation (13), and receiver as mode csiq of pca_csi.py.
-# After the greedy grant, a local search moves single slots between users and swaps pairs of slots of two
+# After the greedy assignment, a local search moves single slots between users and swaps pairs of slots of two
 # users, per frame, as long as the sum of the per-user MSEs under (13) decreases (best move per frame and
 # round, at most --maxit rounds). Every user keeps at least one slot, and a user still sends each group once
-# on its strongest slots with the energy d_s/N per held slot. The search optimizes both the slot counts and
+# on its strongest slots with the energy d_s/N per slot of its support. The search optimizes both the slot counts and
 # the slot positions; it is a local optimum, not a proven global one.
 # Output: ../data/pilot_corr/pca_csi_ls_U<U>[_nf<X>].json.  Usage: python pca_csi_ls.py --U 4 --nearfar 6
 # =========================================================
@@ -15,7 +15,7 @@ from pca_csi import DATA, S, SEG, D_B, NB, channel, wf, greedy_counts, place_sor
 
 
 def mse_sel(Gsel, lam, s2):
-    """Gsel (F,S): gains of the held slots, -1 elsewhere -> sum MSE of the user under (13) per frame."""
+    """Gsel (F,S): gains of the slots of the user, -1 elsewhere -> sum MSE of the user under (13) per frame."""
     F = Gsel.shape[0]
     srt = -np.sort(-Gsel, axis=1)
     n = (Gsel >= 0).sum(1)
@@ -28,47 +28,47 @@ def mse_sel(Gsel, lam, s2):
     return (lam * s2 / (g2 * P + s2) * m).sum(1) + (lam * ~m).sum(1)
 
 
-def held(Gs, owner, j_of_frame):
-    """gains of the slots held by user j_of_frame[f] in frame f, -1 elsewhere."""
+def gains_of_user(Gs, user_of_slot, j_of_frame):
+    """gains of the slots of user j_of_frame[f] in frame f, -1 elsewhere."""
     ar = np.arange(Gs.shape[0])
     G = Gs[ar, j_of_frame, :]
-    return np.where(owner == j_of_frame[:, None], G, -1.0)
+    return np.where(user_of_slot == j_of_frame[:, None], G, -1.0)
 
 
 def local_search(Gs_all, sets, lam, s2, maxit):
     F, U, _ = Gs_all.shape
-    owner_all = np.zeros((F, S), int)
+    user_of_slot_all = np.zeros((F, S), int)
     for f in range(F):
         for j in range(U):
-            owner_all[f, sets[f][j]] = j
-    cur_all = np.stack([mse_sel(held(Gs_all, owner_all, np.full(F, j)), lam, s2) for j in range(U)], 1)
+            user_of_slot_all[f, sets[f][j]] = j
+    cur_all = np.stack([mse_sel(gains_of_user(Gs_all, user_of_slot_all, np.full(F, j)), lam, s2) for j in range(U)], 1)
     start = cur_all.sum(1).copy()
     changed = np.zeros(F, bool); alive = np.ones(F, bool); rounds = 0; active = []
     for it in range(maxit):
         idx = np.where(alive)[0]                             # frames not yet at a local optimum
         if idx.size == 0:
             break
-        Gs, owner, cur = Gs_all[idx], owner_all[idx], cur_all[idx]
+        Gs, user_of_slot, cur = Gs_all[idx], user_of_slot_all[idx], cur_all[idx]
         n = idx.size; ar = np.arange(n)
         best = np.zeros(n); kind = np.zeros(n, int); bx = np.zeros(n, int); by = np.zeros(n, int)
         bma = np.zeros(n); bmb = np.zeros(n); bjb = np.zeros(n, int)
-        for x in range(S):                                   # move slot x from its owner a to user b
-            a = owner[:, x]
-            Ga = held(Gs, owner, a); Ga[:, x] = -1.0
+        for x in range(S):                                   # move slot x from user a to user b
+            a = user_of_slot[:, x]
+            Ga = gains_of_user(Gs, user_of_slot, a); Ga[:, x] = -1.0
             ok_a = (Ga >= 0).sum(1) >= 1
             ma = mse_sel(Ga, lam, s2)
             for b in range(U):
                 jb = np.full(n, b)
-                Gb = held(Gs, owner, jb); Gb[:, x] = Gs[:, b, x]
+                Gb = gains_of_user(Gs, user_of_slot, jb); Gb[:, x] = Gs[:, b, x]
                 mb = mse_sel(Gb, lam, s2)
                 gain = np.where(ok_a & (a != b), cur[ar, a] + cur[:, b] - ma - mb, -np.inf)
                 upd = gain > best
                 best[upd] = gain[upd]; kind[upd] = 1; bx[upd] = x; bjb[upd] = b; bma[upd] = ma[upd]; bmb[upd] = mb[upd]
-        for x in range(S):                                   # swap slot x (owner a) with slot y (owner b)
+        for x in range(S):                                   # swap slot x (of user a) with slot y (of user b)
             for y in range(x + 1, S):
-                a = owner[:, x]; b = owner[:, y]
-                Ga = held(Gs, owner, a); Ga[:, x] = -1.0; Ga[ar, y] = Gs[ar, a, y]
-                Gb = held(Gs, owner, b); Gb[:, y] = -1.0; Gb[ar, x] = Gs[ar, b, x]
+                a = user_of_slot[:, x]; b = user_of_slot[:, y]
+                Ga = gains_of_user(Gs, user_of_slot, a); Ga[:, x] = -1.0; Ga[ar, y] = Gs[ar, a, y]
+                Gb = gains_of_user(Gs, user_of_slot, b); Gb[:, y] = -1.0; Gb[ar, x] = Gs[ar, b, x]
                 ma = mse_sel(Ga, lam, s2); mb = mse_sel(Gb, lam, s2)
                 gain = np.where(a != b, cur[ar, a] + cur[ar, b] - ma - mb, -np.inf)
                 upd = gain > best
@@ -82,15 +82,15 @@ def local_search(Gs_all, sets, lam, s2, maxit):
         for k in np.where(go)[0]:
             f = idx[k]
             if kind[k] == 1:
-                a, b = owner_all[f, bx[k]], bjb[k]
-                owner_all[f, bx[k]] = b
+                a, b = user_of_slot_all[f, bx[k]], bjb[k]
+                user_of_slot_all[f, bx[k]] = b
             else:
-                a, b = owner_all[f, bx[k]], owner_all[f, by[k]]
-                owner_all[f, bx[k]], owner_all[f, by[k]] = b, a
+                a, b = user_of_slot_all[f, bx[k]], user_of_slot_all[f, by[k]]
+                user_of_slot_all[f, bx[k]], user_of_slot_all[f, by[k]] = b, a
             cur_all[f, a], cur_all[f, b] = bma[k], bmb[k]
         changed[idx[go]] = True
         print(f"  round {it + 1}: {go.sum()} frames improved, mean sum MSE {cur_all.sum(1).mean():.5f}", flush=True)
-    new_sets = [[list(np.where(owner_all[f] == j)[0]) for j in range(U)] for f in range(F)]
+    new_sets = [[list(np.where(user_of_slot_all[f] == j)[0]) for j in range(U)] for f in range(F)]
     return new_sets, float(start.mean()), float(cur_all.sum(1).mean()), float(changed.mean()), rounds, active
 
 
@@ -134,15 +134,15 @@ def main():
     out_path = os.path.join(DATA, "pilot_corr", f"pca_csi_ls_{tag}" + ("_" + "_".join(map(str, a.snrs)) if a.snrs != [0, 10, 20] else "") + ".json")
     res = {}
     cache = {}
-    def grant(Gs, s2):
+    def counts_of(Gs, s2):
         if s2 not in cache:
             cache[s2] = greedy_counts(Gs, lam, s2, "mse")
         return cache[s2]
     for snr in a.snrs:
         def greedy(Gs, s2):
-            return grant(Gs, s2), {}
+            return counts_of(Gs, s2), {}
         def searched(Gs, s2):
-            sets = grant(Gs, s2)
+            sets = counts_of(Gs, s2)
             ns, m0, m1, ch, rounds, active = local_search(Gs, sets, lam, s2, a.maxit)
             return ns, {"mse_greedy": m0, "mse_search": m1, "frames_changed": ch, "rounds": rounds, "improved_per_round": active}
         r0, n0 = evaluate(a, lam, V, ct, Ete, snr, greedy)

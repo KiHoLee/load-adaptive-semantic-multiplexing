@@ -1,5 +1,5 @@
 #!/bin/bash
-# 2026-11-04: local search over the slot counts and positions after the greedy grant (pca_csi_ls.py), CPU only.
+# 2026-11-04: local search over the slot counts and positions after the greedy subband assignment (pca_csi_ls.py), CPU only.
 cd "$(dirname "$0")"
 mkdir -p logs
 PY=${PY:-python}

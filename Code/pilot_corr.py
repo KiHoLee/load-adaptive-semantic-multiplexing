@@ -1,12 +1,12 @@
 # =========================================================
-# pilot_corr.py — pilot (2026-11-03): channel-aware placement of the dynamic masks under fading
-# that is correlated across the slots of a block. Not part of the submitted manuscript.
+# pilot_corr.py — learned references with subband gains (2026-11-03; response letter, Table R2.4): channel-aware
+# placement of the dynamic masks under fading that is correlated across the slots of a block.
 #
 # Channel: every user u has its own amplitude |h_u[s]| per slot s, an AR(1) complex Gaussian
 # process over the N = 24 slots with correlation rho between adjacent slots and CN(0,1)
-# marginals, phase pre-compensated per slot. The scheduler (receiver) knows |h_u[s]| of every
-# active user, announces the placement in the grant, and scales each received slot by the
-# MMSE factor g / (g^2 + sigma^2) of its owner before the gather. Every scheme gets this receiver.
+# marginals, phase pre-compensated per slot. The receiver knows |h_u[s]| of every
+# active user, announces the masks before the frame, and scales each received slot by the
+# MMSE factor g / (g^2 + sigma^2) of the user that occupies it before the gather. Every scheme gets this receiver.
 #
 # Placement modes (one user per slot, rank j keeps the quota N_j = ceil((N - j)/U) of the fixed rule):
 #   fixed     slot s -> rank s mod U, segment floor(s/U)            (the manuscript rule)

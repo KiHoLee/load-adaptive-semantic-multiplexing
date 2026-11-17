@@ -1,5 +1,5 @@
 # =========================================================
-# pca_csi_counts.py — who receives the slots of the greedy grant (csiq of pca_csi.py), 2026-11-04.
+# pca_csi_counts.py — who receives the subbands of the greedy subband counts (csiq of pca_csi.py), 2026-11-04.
 # Same channel and draws as pca_csi.py (seed 123 + SNR, AR(1) over the 24 slots, offsets of up to
 # +-nearfar dB). Users of each frame are ranked by their mean slot gain g^2 (rank 0 strongest), and the
 # script stores the mean slot count per rank, the share of frames in which the weakest user receives more,

@@ -278,7 +278,7 @@ class OrthoDS(nn.Module):
 
 
 class SharedMuxLA(nn.Module):
-    """Load-aware expanded shared block (2026-10-18). One trained model with U_max registered users.
+    """Expanded shared block with one mask row per load (2026-10-18, not reported). One trained model with U_max mask rows.
     The announced load U (already needed for the per-user normalization) selects a row of
     load-indexed masks, attention queries, and receiver normalization, so that a light load can
     spread each user over more of the block. The transmit projection and the user-specific

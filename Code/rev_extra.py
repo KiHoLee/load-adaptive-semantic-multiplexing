@@ -23,7 +23,7 @@
 #                           each part passes the linear part of f_rx,u
 #                           (layer-norm centering and gain, then W_u)
 # Outputs: ../data/extra/<mode>_<name>_s<seed>.json (nothing is overwritten
-# in ../data/). Usage examples are in ains_extra.sh.
+# in ../data/). Usage examples are in dyn_queue.sh (stages clamp and eval) and extra_runs.sh.
 # =========================================================
 import argparse, json, math, os, sys
 import torch
@@ -39,7 +39,7 @@ def load(path, dev):
     ck = torch.load(path, map_location="cpu", weights_only=False)   # torch>=2.6 defaults to weights_only=True
     cfg = ck["cfg"]
     sd = ck["state_dict"]
-    n_loads = sd["mask"].shape[0] if "mask" in sd and sd["mask"].dim() == 3 else None   # load rows of a load-aware model
+    n_loads = sd["mask"].shape[0] if "mask" in sd and sd["mask"].dim() == 3 else None   # load rows of a per-load mask model
     model = build_model(cfg["scheme"], cfg["U_max"], cfg["d_b"], cfg["K"],
                         attention=cfg.get("attention", True),
                         per_user_rx=cfg.get("per_user_rx", False), n_loads=n_loads,
@@ -217,7 +217,7 @@ def join_eval(ckdir, dev, seeds=(1, 2, 3), Us=(1, 2, 3, 4, 5), snrs=(0, 10, 20, 
 
 @torch.no_grad()
 def join_la_eval(ckdir, name, dev, seeds=(1, 2, 3), Us=(1, 2, 3, 4, 5), snrs=(0, 10, 20, 30), trials=2000, bs=250):
-    """Load-aware model: U announced users use the mask row of load U; an unannounced newcomer follows
+    """Per-load mask model: U announced users use the mask row of load U; an unannounced newcomer follows
     the same announced configuration (row U, normalization d_s/U). Reports the announced users' fidelity
     with and without the newcomer, and the newcomer's own fidelity once the receiver adds its mask."""
     out = {}
